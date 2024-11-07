@@ -108,6 +108,12 @@ pub fn tokenize(input: String) -> Result<Vec<Token>, &'static str> {
                     "for"    => {TokenKind::For}
                     "if"     => {TokenKind::If}
                     "else"   => {TokenKind::Else}
+                    "int"    => {TokenKind::TypeInt}
+                    "char"   => {TokenKind::TypeChar}
+                    "long"   => {TokenKind::TypeLong}
+                    "float"  => {TokenKind::TypeFloat}
+                    "double" => {TokenKind::TypeDouble}
+                    "void"   => {TokenKind::TypeVoid}
                     _ => {TokenKind::Identifier}
                 };
 
@@ -214,7 +220,8 @@ pub enum TokenKind {
     If, Else, While, For, Return, Int, Char, Void,
 
     //---- Types
-    TypeInt, TypeFloat,
+    TypeInt, TypeLong,
+    TypeFloat, TypeDouble,
     TypeChar, TypeVoid,
 
     //---- Literals
