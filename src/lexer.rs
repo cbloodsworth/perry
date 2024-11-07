@@ -94,10 +94,10 @@ pub fn tokenize(input: String) -> Result<Vec<Token>, &'static str> {
 
             //---- Identifier
             c if c.is_alphabetic() => {
-                let lexeme: String = iter
+                let lexeme = iter
                     .by_ref()
                     .peeking_take_while(|&x| x.is_alphanumeric())
-                    .collect();
+                    .collect::<String>();
 
                 //---- Recognized keywords
                 let kind = match lexeme.as_str() {
