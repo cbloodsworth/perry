@@ -111,6 +111,28 @@ pub fn tokenize(input: String) -> Result<Vec<Token>, &'static str> {
                 Token{kind, lexeme}
             }
 
+            //---- Numeric literals
+            c if c.is_numeric() => {
+                let mut lexeme = iter
+                    .by_ref()
+                    .peeking_take_while(|&x| x.is_numeric())
+                    .collect::<String>();
+
+                // If stopped at a '.' it's a float
+                let kind = if iter.peek() == Some(&&'.') {
+                    lexeme.push('.');
+                    iter.next();
+                    lexeme.extend(iter.by_ref().peeking_take_while(|&x| x.is_numeric()));
+
+                    TokenKind::FloatLiteral
+                }
+                else {
+                    TokenKind::IntegerLiteral
+                };
+
+                Token{kind, lexeme}
+            }
+
             //---- String literals
             '"' => {
                 iter.next();
