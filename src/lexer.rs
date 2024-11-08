@@ -1,215 +1,229 @@
 use std::{error::Error, iter::Peekable, str::Chars};
 use itertools::Itertools;
 
-fn match_one(iter: &mut Peekable<Chars>, kind: TokenKind) -> Token {
-    let lexeme = iter.peek()
-        .expect("The iterator should point to a valid char when this method is called.")
-        .to_string();
-
-    iter.next();
-    Token{kind, lexeme}
+pub struct Lexer<'a> {
+    pub iter: Peekable<Chars<'a>>,
+    tokens: Vec<Token>
 }
 
-/// Matches either one or two characters, and returns the token.
-/// Changes state of iterator.
-///
-/// There are cases where we want to lex two-character sequences, but
-///     need to look ahead one character to determine what we are looking at.
-///
-/// Example: !xxx <--- Unparsed characters
-/// .        ^--- If we are here, we need to look ahead to see if we are at an
-/// .             Inequality '!=', or just LogicalNot '!'.
-/// .
-///
-fn match_two_or_one(iter: &mut Peekable<Chars>,
-                  matches: &[(char, TokenKind)],
-                  otherwise: TokenKind) -> Token {
-    let lexeme = iter.peek()
-        .expect("The iterator should point to a valid char when this method is called.")
-        .clone()
-        .to_string();
+impl<'a> Lexer<'a> {
+    pub fn lex(input: &'a str) -> Result<Vec<Token>, &'static str> {
+        Self {
+            iter: input.chars().peekable(),
+            tokens:Vec::new()
+        }.tokenize()
+    }
+    fn tokenize(mut self) -> Result<Vec<Token>, &'static str> {
+        while let Some(c) = self.iter.peek() {
+            let token = match c {
+                //---- Single-character tokens
+                ';' => self.match_one(TokenKind::Semicolon),
+                '.' => self.match_one(TokenKind::Dot),
+                ',' => self.match_one(TokenKind::Comma),
+                '?' => self.match_one(TokenKind::Question),
+                '~' => self.match_one(TokenKind::Tilde),
+                '^' => self.match_one(TokenKind::Caret),
+                '(' => self.match_one(TokenKind::LParen),
+                ')' => self.match_one(TokenKind::RParen),
+                '{' => self.match_one(TokenKind::LCurly),
+                '}' => self.match_one(TokenKind::RCurly),
+                '[' => self.match_one(TokenKind::LSquare),
+                ']' => self.match_one(TokenKind::RSquare),
 
-    // Consume the first character, move to the second
-    iter.next();
-    for (second, kind) in matches {
-        if iter.peek() == Some(&second) {
-            iter.next();
-            return Token{kind: kind.clone(), lexeme: format!("{}{}",lexeme,second)}
+                //---- Double-character tokens
+                '=' => self.match_two_or_one(
+                    &[('=', TokenKind::EqualEqual)],
+                            TokenKind::Equal),
+                '+' => self.match_two_or_one(
+                    &[('+', TokenKind::PlusPlus),
+                      ('=', TokenKind::PlusEqual)],
+                            TokenKind::Plus),
+                '-' => self.match_two_or_one(
+                    &[('-', TokenKind::MinusMinus),
+                      ('>', TokenKind::Arrow),
+                      ('=', TokenKind::MinusEqual)],
+                            TokenKind::Minus),
+                '*' => self.match_two_or_one(
+                    &[('=', TokenKind::StarEqual),
+                      ('/', TokenKind::BlockCommentEnd)],
+                            TokenKind::Star),
+                '/' => self.match_two_or_one(
+                    &[('=', TokenKind::SlashEqual),
+                      ('/', TokenKind::LineComment),
+                      ('*', TokenKind::BlockCommentStart)],
+                            TokenKind::Slash),
+                '%' => self.match_two_or_one(
+                    &[('=', TokenKind::PercentEqual)],
+                            TokenKind::Percent),
+                '!' => self.match_two_or_one(
+                    &[('=', TokenKind::BangEqual)],
+                            TokenKind::Bang),
+                '|' => self.match_two_or_one(
+                    &[('|', TokenKind::LogicalOr),
+                      ('=', TokenKind::BarEqual)],
+                            TokenKind::Bar),
+                '&' => self.match_two_or_one(
+                    &[('&', TokenKind::LogicalAnd),
+                      ('=', TokenKind::AmpersandEqual)],
+                            TokenKind::Ampersand),
+                '>' => self.match_two_or_one(
+                    &[('>', TokenKind::GreaterGreater),
+                      ('=', TokenKind::GreaterEqual)],
+                            TokenKind::Greater),
+                '<' => self.match_two_or_one(
+                    &[('<', TokenKind::LessLess),
+                      ('=', TokenKind::LessEqual)],
+                            TokenKind::Less),
+                ':' => self.match_two_or_one(
+                    &[(':', TokenKind::ColonColon)],
+                            TokenKind::Colon),
+
+                //---- Identifier
+                c if c.is_alphabetic() || *c == '_' => {
+                    let lexeme = self.iter
+                        .by_ref()
+                        .peeking_take_while(|&x| x.is_alphanumeric() || x == '_')
+                        .collect::<String>();
+
+                    //---- Recognized keywords
+                    let kind = match lexeme.as_str() {
+                        // Control flow
+                        "while"  => {TokenKind::While}
+                        "for"    => {TokenKind::For}
+                        "if"     => {TokenKind::If}
+                        "else"   => {TokenKind::Else}
+                        "return"   => {TokenKind::Return}
+
+                        // Types
+                        "int"    => {TokenKind::TypeInt}
+                        "char"   => {TokenKind::TypeChar}
+                        "long"   => {TokenKind::TypeLong}
+                        "float"  => {TokenKind::TypeFloat}
+                        "double" => {TokenKind::TypeDouble}
+                        "void"   => {TokenKind::TypeVoid}
+                        _ => {TokenKind::Identifier}
+                    };
+
+                    Token{kind, lexeme}
+                }
+
+                //---- Numeric literals
+                c if c.is_numeric() => {
+                    let mut lexeme = self.iter
+                        .by_ref()
+                        .peeking_take_while(|&x| x.is_numeric())
+                        .collect::<String>();
+
+                    // If stopped at a '.' it's a float
+                    let kind = if self.iter.peek() == Some(&&'.') {
+                        lexeme.push('.');
+                        self.iter.next();
+                        lexeme.extend(self.iter.by_ref().peeking_take_while(|&x| x.is_numeric()));
+
+                        TokenKind::FloatLiteral
+                    }
+                    else {
+                        TokenKind::IntegerLiteral
+                    };
+
+                    Token{kind, lexeme}
+                }
+
+                //---- String literals
+                '"' => {
+                    self.iter.next();
+                    let mut word = self.iter
+                        .by_ref()
+                        .peeking_take_while(|&x| x != '"')
+                        .collect::<String>();
+
+                    if self.iter.peek().is_none() {
+                        return Err("Missing terminating \" character.");
+                    }
+
+                    self.iter.next();
+
+                    // Keep going if that quote was escaped
+                    while word.ends_with("\\") {
+                        word.push('"');
+                        word.extend(self.iter.by_ref().take_while(|&x| x != '"'));
+                    }
+
+                    Token{kind: TokenKind::StringLiteral, lexeme: format!("\"{}\"", word) }
+                }
+
+                //---- Char literals
+                '\''=> {
+                    self.iter.next();
+                    let chr = self.iter.next().ok_or("Missing terminating \' character.")?;
+                    self.iter.next_if_eq(&'\'').ok_or("Expected single character literal.")?;
+                    Token{kind: TokenKind::CharLiteral, lexeme: format!("'{}'", chr) }
+                }
+
+                // Skip whitespace
+                c if c.is_whitespace() => {
+                    self.iter.by_ref()
+                        .peeking_take_while(|&x| x.is_whitespace())
+                        .for_each(drop);
+
+                    continue;
+                }
+
+                // Unrecognized
+                _ => {
+                    let lexeme = c.to_string();
+
+                    self.iter.next();
+                    Token { kind: TokenKind::Unknown, lexeme }
+                }
+            };
+
+            self.tokens.push(token)
         }
+
+        self.tokens.push(Token{kind: TokenKind::EOF, lexeme: "EOF".to_string()});
+        Ok(self.tokens)
     }
 
-    Token{kind: otherwise, lexeme}
-}
+    fn match_one(&mut self, kind: TokenKind) -> Token {
+        let lexeme = self.iter.peek()
+            .expect("The iterator should point to a valid char when this method is called.")
+            .to_string();
 
-pub fn tokenize(input: &str) -> Result<Vec<Token>, &'static str> {
-    let mut iter = input.chars().peekable();
-    let mut tokens = Vec::new();
-    while let Some(c) = iter.peek() {
-        tokens.push(match c {
-            //---- Single-character tokens
-            ';' => match_one(&mut iter, TokenKind::Semicolon),
-            '.' => match_one(&mut iter, TokenKind::Dot),
-            ',' => match_one(&mut iter, TokenKind::Comma),
-            '?' => match_one(&mut iter, TokenKind::Question),
-            '~' => match_one(&mut iter, TokenKind::Tilde),
-            '^' => match_one(&mut iter, TokenKind::Caret),
-            '(' => match_one(&mut iter, TokenKind::LParen),
-            ')' => match_one(&mut iter, TokenKind::RParen),
-            '{' => match_one(&mut iter, TokenKind::LCurly),
-            '}' => match_one(&mut iter, TokenKind::RCurly),
-            '[' => match_one(&mut iter, TokenKind::LSquare),
-            ']' => match_one(&mut iter, TokenKind::RSquare),
-
-            //---- Double-character tokens
-            '=' => match_two_or_one(&mut iter,
-                &[('=', TokenKind::EqualEqual)],
-                        TokenKind::Equal),
-            '+' => match_two_or_one(&mut iter,
-                &[('+', TokenKind::PlusPlus),
-                  ('=', TokenKind::PlusEqual)],
-                        TokenKind::Plus),
-            '-' => match_two_or_one(&mut iter,
-                &[('-', TokenKind::MinusMinus),
-                  ('>', TokenKind::Arrow),
-                  ('=', TokenKind::MinusEqual)],
-                        TokenKind::Minus),
-            '*' => match_two_or_one(&mut iter,
-                &[('=', TokenKind::StarEqual),
-                  ('/', TokenKind::BlockCommentEnd)],
-                        TokenKind::Star),
-            '/' => match_two_or_one(&mut iter,
-                &[('=', TokenKind::SlashEqual),
-                  ('/', TokenKind::LineComment),
-                  ('*', TokenKind::BlockCommentStart)],
-                        TokenKind::Slash),
-            '%' => match_two_or_one(&mut iter,
-                &[('=', TokenKind::PercentEqual)],
-                        TokenKind::Percent),
-            '!' => match_two_or_one(&mut iter,
-                &[('=', TokenKind::BangEqual)],
-                        TokenKind::Bang),
-            '|' => match_two_or_one(&mut iter,
-                &[('|', TokenKind::LogicalOr),
-                  ('=', TokenKind::BarEqual)],
-                        TokenKind::Bar),
-            '&' => match_two_or_one(&mut iter,
-                &[('&', TokenKind::LogicalAnd),
-                  ('=', TokenKind::AmpersandEqual)],
-                        TokenKind::Ampersand),
-            '>' => match_two_or_one(&mut iter,
-                &[('>', TokenKind::GreaterGreater),
-                  ('=', TokenKind::GreaterEqual)],
-                        TokenKind::Greater),
-            '<' => match_two_or_one(&mut iter,
-                &[('<', TokenKind::LessLess),
-                  ('=', TokenKind::LessEqual)],
-                        TokenKind::Less),
-            ':' => match_two_or_one(&mut iter,
-                &[(':', TokenKind::ColonColon)],
-                        TokenKind::Colon),
-
-            //---- Identifier
-            c if c.is_alphabetic() || *c == '_' => {
-                let lexeme = iter
-                    .by_ref()
-                    .peeking_take_while(|&x| x.is_alphanumeric() || x == '_')
-                    .collect::<String>();
-
-                //---- Recognized keywords
-                let kind = match lexeme.as_str() {
-                    // Control flow
-                    "while"  => {TokenKind::While}
-                    "for"    => {TokenKind::For}
-                    "if"     => {TokenKind::If}
-                    "else"   => {TokenKind::Else}
-                    "return"   => {TokenKind::Return}
-
-                    // Types
-                    "int"    => {TokenKind::TypeInt}
-                    "char"   => {TokenKind::TypeChar}
-                    "long"   => {TokenKind::TypeLong}
-                    "float"  => {TokenKind::TypeFloat}
-                    "double" => {TokenKind::TypeDouble}
-                    "void"   => {TokenKind::TypeVoid}
-                    _ => {TokenKind::Identifier}
-                };
-
-                Token{kind, lexeme}
-            }
-
-            //---- Numeric literals
-            c if c.is_numeric() => {
-                let mut lexeme = iter
-                    .by_ref()
-                    .peeking_take_while(|&x| x.is_numeric())
-                    .collect::<String>();
-
-                // If stopped at a '.' it's a float
-                let kind = if iter.peek() == Some(&&'.') {
-                    lexeme.push('.');
-                    iter.next();
-                    lexeme.extend(iter.by_ref().peeking_take_while(|&x| x.is_numeric()));
-
-                    TokenKind::FloatLiteral
-                }
-                else {
-                    TokenKind::IntegerLiteral
-                };
-
-                Token{kind, lexeme}
-            }
-
-            //---- String literals
-            '"' => {
-                iter.next();
-                let mut word = iter
-                    .by_ref()
-                    .peeking_take_while(|&x| x != '"')
-                    .collect::<String>();
-
-                if iter.peek().is_none() {
-                    return Err("Missing terminating \" character.");
-                }
-
-                iter.next();
-
-                // Keep going if that quote was escaped
-                while word.ends_with("\\") {
-                    word.push('"');
-                    word.extend(iter.by_ref().take_while(|&x| x != '"'));
-                }
-
-                Token{kind: TokenKind::StringLiteral, lexeme: format!("\"{}\"", word) }
-            }
-
-            //---- Char literals
-            '\''=> {
-                iter.next();
-                let chr = iter.next().ok_or("Missing terminating \' character.")?;
-                iter.next_if_eq(&'\'').ok_or("Expected single character literal.")?;
-                Token{kind: TokenKind::CharLiteral, lexeme: format!("'{}'", chr) }
-            }
-
-            // Skip whitespace
-            c if c.is_whitespace() => {
-                iter.by_ref()
-                    .peeking_take_while(|&x| x.is_whitespace())
-                    .for_each(drop);
-
-                Token{kind: TokenKind::Whitespace, lexeme: "".to_string()}
-            }
-
-            // Unrecognized
-            _ => {
-                let lexeme = c.to_string();
-
-                iter.next();
-                Token { kind: TokenKind::Unknown, lexeme }
-            }
-        });
+        self.iter.next();
+        Token{kind, lexeme}
     }
 
-    Ok(tokens)
+    /// Matches either one or two characters, and returns the token.
+    /// Changes state of iterator.
+    ///
+    /// There are cases where we want to lex two-character sequences, but
+    ///     need to look ahead one character to determine what we are looking at.
+    ///
+    /// Example: !xxx <--- Unparsed characters
+    /// .        ^--- If we are here, we need to look ahead to see if we are at an
+    /// .             Inequality '!=', or just LogicalNot '!'.
+    /// .
+    ///
+    fn match_two_or_one(&mut self, matches: &[(char, TokenKind)], otherwise: TokenKind) -> Token {
+        let lexeme = self.iter.peek()
+            .expect("The iterator should point to a valid char when this method is called.")
+            .clone()
+            .to_string();
+
+        // Consume the first character, move to the second
+        self.iter.next();
+        for (second, kind) in matches {
+            if self.iter.peek() == Some(&second) {
+                self.iter.next();
+                return Token{kind: kind.clone(), lexeme: format!("{}{}",lexeme,second)}
+            }
+        }
+
+        Token{kind: otherwise, lexeme}
+    }
+
+
 }
 
 #[derive(Debug, PartialEq)]
@@ -233,7 +247,6 @@ pub enum TokenKind {
     Comma, Semicolon,
     Colon, ColonColon, Dot,
     Question, Tilde, Caret,
-    SingleQuote, DoubleQuote,
 
     //---- Double-character operators
     LessEqual, GreaterEqual,
@@ -276,7 +289,7 @@ mod lexer_tests {
     use super::*;
 
     fn assert_first_token(text: &str, expected_token: Token) {
-        let vec = tokenize(text).unwrap();
+        let vec = Lexer::lex(text).unwrap();
         let first_token = vec.get(0).unwrap();
         assert_eq!(*first_token, expected_token);
     }

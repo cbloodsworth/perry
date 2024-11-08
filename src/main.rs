@@ -4,8 +4,7 @@ mod lexer;
 mod parser;
 
 fn print_lex_results(input: &str) {
-    let output = lexer::tokenize(input);
-    match output {
+    match lexer::Lexer::lex(input) {
         Ok(x) => {
             x.iter().for_each(|x| {
                 let lexeme = format!("[{}]", x.lexeme);
