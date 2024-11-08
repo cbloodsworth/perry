@@ -109,10 +109,10 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, &'static str> {
                         TokenKind::Colon),
 
             //---- Identifier
-            c if c.is_alphabetic() => {
+            c if c.is_alphabetic() || *c == '_' => {
                 let lexeme = iter
                     .by_ref()
-                    .peeking_take_while(|&x| x.is_alphanumeric())
+                    .peeking_take_while(|&x| x.is_alphanumeric() || x == '_')
                     .collect::<String>();
 
                 //---- Recognized keywords
@@ -162,19 +162,32 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, &'static str> {
             //---- String literals
             '"' => {
                 iter.next();
-                let word = iter
+                let mut word = iter
                     .by_ref()
-                    .take_while(|&x| x != '"')
+                    .peeking_take_while(|&x| x != '"')
                     .collect::<String>();
+
+                if iter.peek().is_none() {
+                    return Err("Missing terminating \" character.");
+                }
+
+                iter.next();
+
+                // Keep going if that quote was escaped
+                while word.ends_with("\\") {
+                    word.push('"');
+                    word.extend(iter.by_ref().take_while(|&x| x != '"'));
+                }
 
                 Token{kind: TokenKind::StringLiteral, lexeme: format!("\"{}\"", word) }
             }
 
             //---- Char literals
             '\''=> {
+                iter.next();
                 let chr = iter.next().ok_or("Missing terminating \' character.")?;
-                iter.next_if_eq(&'\'').ok_or("Missing terminating \' character.")?;
-                Token{kind: TokenKind::StringLiteral, lexeme: format!("'{}'", chr) }
+                iter.next_if_eq(&'\'').ok_or("Expected single character literal.")?;
+                Token{kind: TokenKind::CharLiteral, lexeme: format!("'{}'", chr) }
             }
 
             // Skip whitespace
@@ -245,7 +258,8 @@ pub enum TokenKind {
 
     //---- Literals
     Identifier,
-    IntegerLiteral, FloatLiteral, StringLiteral,
+    IntegerLiteral, FloatLiteral, 
+    StringLiteral, CharLiteral,
 
     //---- Whitespace
     Whitespace,
@@ -361,5 +375,26 @@ mod lexer_tests {
         assert_first_token("for", Token{lexeme: "for".to_string(), kind: TokenKind::For});
         assert_first_token("while", Token{lexeme: "while".to_string(), kind: TokenKind::While});
         assert_first_token("return", Token{lexeme: "return".to_string(), kind: TokenKind::Return});
+    }
+
+    #[test]
+    fn literals_string() {
+        assert_first_token("\"Hello\"", Token{lexeme: "\"Hello\"".to_string(), kind: TokenKind::StringLiteral});
+        assert_first_token("\"\"", Token{lexeme: "\"\"".to_string(), kind: TokenKind::StringLiteral});
+        assert_first_token("\"\\\"\"", Token{lexeme: "\"\\\"\"".to_string(), kind: TokenKind::StringLiteral});
+    }
+
+    #[test]
+    fn literals_char() {
+        assert_first_token("'o'", Token{lexeme: "'o'".to_string(), kind: TokenKind::CharLiteral});
+    }
+
+    #[test]
+    fn literals_ident() {
+        assert_first_token("some_identifier", Token{lexeme: "some_identifier".to_string(), kind: TokenKind::Identifier});
+        assert_first_token("hello123", Token{lexeme: "hello123".to_string(), kind: TokenKind::Identifier});
+        assert_first_token("_hello", Token{lexeme: "_hello".to_string(), kind: TokenKind::Identifier});
+        assert_first_token("_", Token{lexeme: "_".to_string(), kind: TokenKind::Identifier});
+        assert_first_token("_123", Token{lexeme: "_123".to_string(), kind: TokenKind::Identifier});
     }
 }
