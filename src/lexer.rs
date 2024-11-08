@@ -41,19 +41,24 @@ fn match_two_or_one(iter: &mut Peekable<Chars>,
     Token{kind: otherwise, lexeme}
 }
 
-pub fn tokenize(input: String) -> Result<Vec<Token>, &'static str> {
+pub fn tokenize(input: &str) -> Result<Vec<Token>, &'static str> {
     let mut iter = input.chars().peekable();
     let mut tokens = Vec::new();
     while let Some(c) = iter.peek() {
         tokens.push(match c {
             //---- Single-character tokens
             ';' => match_one(&mut iter, TokenKind::Semicolon),
+            '.' => match_one(&mut iter, TokenKind::Dot),
+            ',' => match_one(&mut iter, TokenKind::Comma),
+            '?' => match_one(&mut iter, TokenKind::Question),
+            '~' => match_one(&mut iter, TokenKind::Tilde),
+            '^' => match_one(&mut iter, TokenKind::Caret),
             '(' => match_one(&mut iter, TokenKind::LParen),
             ')' => match_one(&mut iter, TokenKind::RParen),
             '{' => match_one(&mut iter, TokenKind::LCurly),
             '}' => match_one(&mut iter, TokenKind::RCurly),
-            '[' => match_one(&mut iter, TokenKind::RSquare),
-            ']' => match_one(&mut iter, TokenKind::LSquare),
+            '[' => match_one(&mut iter, TokenKind::LSquare),
+            ']' => match_one(&mut iter, TokenKind::RSquare),
 
             //---- Double-character tokens
             '=' => match_two_or_one(&mut iter,
@@ -65,16 +70,21 @@ pub fn tokenize(input: String) -> Result<Vec<Token>, &'static str> {
                         TokenKind::Plus),
             '-' => match_two_or_one(&mut iter,
                 &[('-', TokenKind::MinusMinus),
+                  ('>', TokenKind::Arrow),
                   ('=', TokenKind::MinusEqual)],
                         TokenKind::Minus),
             '*' => match_two_or_one(&mut iter,
-                &[('=', TokenKind::StarEqual)],
+                &[('=', TokenKind::StarEqual),
+                  ('/', TokenKind::BlockCommentEnd)],
                         TokenKind::Star),
             '/' => match_two_or_one(&mut iter,
                 &[('=', TokenKind::SlashEqual),
                   ('/', TokenKind::LineComment),
                   ('*', TokenKind::BlockCommentStart)],
                         TokenKind::Slash),
+            '%' => match_two_or_one(&mut iter,
+                &[('=', TokenKind::PercentEqual)],
+                        TokenKind::Percent),
             '!' => match_two_or_one(&mut iter,
                 &[('=', TokenKind::BangEqual)],
                         TokenKind::Bang),
@@ -94,6 +104,9 @@ pub fn tokenize(input: String) -> Result<Vec<Token>, &'static str> {
                 &[('<', TokenKind::LessLess),
                   ('=', TokenKind::LessEqual)],
                         TokenKind::Less),
+            ':' => match_two_or_one(&mut iter,
+                &[(':', TokenKind::ColonColon)],
+                        TokenKind::Colon),
 
             //---- Identifier
             c if c.is_alphabetic() => {
@@ -104,10 +117,14 @@ pub fn tokenize(input: String) -> Result<Vec<Token>, &'static str> {
 
                 //---- Recognized keywords
                 let kind = match lexeme.as_str() {
+                    // Control flow
                     "while"  => {TokenKind::While}
                     "for"    => {TokenKind::For}
                     "if"     => {TokenKind::If}
                     "else"   => {TokenKind::Else}
+                    "return"   => {TokenKind::Return}
+
+                    // Types
                     "int"    => {TokenKind::TypeInt}
                     "char"   => {TokenKind::TypeChar}
                     "long"   => {TokenKind::TypeLong}
@@ -182,12 +199,13 @@ pub fn tokenize(input: String) -> Result<Vec<Token>, &'static str> {
     Ok(tokens)
 }
 
+#[derive(Debug, PartialEq)]
 pub struct Token {
     pub kind: TokenKind,
     pub lexeme: String
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
     //---- Parentheses and Braces
     LParen, RParen,
@@ -200,7 +218,7 @@ pub enum TokenKind {
     Ampersand, Bar, Bang,
     Less, Greater,
     Comma, Semicolon,
-    Colon, DoubleColon, Dot,
+    Colon, ColonColon, Dot,
     Question, Tilde, Caret,
     SingleQuote, DoubleQuote,
 
@@ -210,6 +228,7 @@ pub enum TokenKind {
     EqualEqual, BangEqual,
     PlusEqual, MinusEqual,
     StarEqual, SlashEqual,
+    PercentEqual,
     PlusPlus, MinusMinus,
     BarEqual, AmpersandEqual,
     LogicalOr, LogicalAnd,
@@ -217,7 +236,7 @@ pub enum TokenKind {
     BlockCommentStart, BlockCommentEnd,
 
     // Keywords
-    If, Else, While, For, Return, Int, Char, Void,
+    If, Else, While, For, Return,
 
     //---- Types
     TypeInt, TypeLong,
@@ -236,4 +255,111 @@ pub enum TokenKind {
 
     //---- Unknown
     Unknown
+}
+
+#[cfg(test)]
+mod lexer_tests {
+    use super::*;
+
+    fn assert_first_token(text: &str, expected_token: Token) {
+        let vec = tokenize(text).unwrap();
+        let first_token = vec.get(0).unwrap();
+        assert_eq!(*first_token, expected_token);
+    }
+
+
+    #[test]
+    fn one_char_arithmetic() {
+        assert_first_token("+", Token{lexeme: "+".to_string(), kind: TokenKind::Plus});
+        assert_first_token("-", Token{lexeme: "-".to_string(), kind: TokenKind::Minus});
+        assert_first_token("*", Token{lexeme: "*".to_string(), kind: TokenKind::Star});
+        assert_first_token("/", Token{lexeme: "/".to_string(), kind: TokenKind::Slash});
+        assert_first_token("%", Token{lexeme: "%".to_string(), kind: TokenKind::Percent});
+    }
+
+    #[test]
+    fn one_char_grouping() {
+        assert_first_token("(", Token{lexeme: "(".to_string(), kind: TokenKind::LParen});
+        assert_first_token(")", Token{lexeme: ")".to_string(), kind: TokenKind::RParen});
+        assert_first_token("{", Token{lexeme: "{".to_string(), kind: TokenKind::LCurly});
+        assert_first_token("}", Token{lexeme: "}".to_string(), kind: TokenKind::RCurly});
+        assert_first_token("[", Token{lexeme: "[".to_string(), kind: TokenKind::LSquare});
+        assert_first_token("]", Token{lexeme: "]".to_string(), kind: TokenKind::RSquare});
+    }
+
+    #[test]
+    fn one_char_logical() {
+        assert_first_token(">", Token{lexeme: ">".to_string(), kind: TokenKind::Greater});
+        assert_first_token("<", Token{lexeme: "<".to_string(), kind: TokenKind::Less});
+        assert_first_token("&", Token{lexeme: "&".to_string(), kind: TokenKind::Ampersand});
+        assert_first_token("|", Token{lexeme: "|".to_string(), kind: TokenKind::Bar});
+        assert_first_token("?", Token{lexeme: "?".to_string(), kind: TokenKind::Question});
+        assert_first_token("!", Token{lexeme: "!".to_string(), kind: TokenKind::Bang});
+    }
+
+    #[test]
+    fn one_char_other() {
+        assert_first_token("=", Token{lexeme: "=".to_string(), kind: TokenKind::Equal});
+        assert_first_token(".", Token{lexeme: ".".to_string(), kind: TokenKind::Dot});
+        assert_first_token(",", Token{lexeme: ",".to_string(), kind: TokenKind::Comma});
+        assert_first_token(":", Token{lexeme: ":".to_string(), kind: TokenKind::Colon});
+        assert_first_token(";", Token{lexeme: ";".to_string(), kind: TokenKind::Semicolon});
+        assert_first_token("~", Token{lexeme: "~".to_string(), kind: TokenKind::Tilde});
+        assert_first_token("^", Token{lexeme: "^".to_string(), kind: TokenKind::Caret});
+    }
+
+    #[test]
+    fn two_char_assignment() {
+        assert_first_token("+=", Token{lexeme: "+=".to_string(), kind: TokenKind::PlusEqual});
+        assert_first_token("-=", Token{lexeme: "-=".to_string(), kind: TokenKind::MinusEqual});
+        assert_first_token("*=", Token{lexeme: "*=".to_string(), kind: TokenKind::StarEqual});
+        assert_first_token("/=", Token{lexeme: "/=".to_string(), kind: TokenKind::SlashEqual});
+        assert_first_token("%=", Token{lexeme: "%=".to_string(), kind: TokenKind::PercentEqual});
+        assert_first_token("|=", Token{lexeme: "|=".to_string(), kind: TokenKind::BarEqual});
+        assert_first_token("&=", Token{lexeme: "&=".to_string(), kind: TokenKind::AmpersandEqual});
+        assert_first_token("++", Token{lexeme: "++".to_string(), kind: TokenKind::PlusPlus});
+        assert_first_token("--", Token{lexeme: "--".to_string(), kind: TokenKind::MinusMinus});
+    }
+
+    #[test]
+    fn two_char_logical() {
+        assert_first_token(">=", Token{lexeme: ">=".to_string(), kind: TokenKind::GreaterEqual});
+        assert_first_token("<=", Token{lexeme: "<=".to_string(), kind: TokenKind::LessEqual});
+        assert_first_token("&&", Token{lexeme: "&&".to_string(), kind: TokenKind::LogicalAnd});
+        assert_first_token("||", Token{lexeme: "||".to_string(), kind: TokenKind::LogicalOr});
+        assert_first_token("!=", Token{lexeme: "!=".to_string(), kind: TokenKind::BangEqual});
+        assert_first_token("==", Token{lexeme: "==".to_string(), kind: TokenKind::EqualEqual});
+    }
+
+    #[test]
+    fn two_char_comments() {
+        assert_first_token("//", Token{lexeme: "//".to_string(), kind: TokenKind::LineComment});
+        assert_first_token("/*", Token{lexeme: "/*".to_string(), kind: TokenKind::BlockCommentStart});
+        assert_first_token("*/", Token{lexeme: "*/".to_string(), kind: TokenKind::BlockCommentEnd});
+    }
+
+    #[test]
+    fn two_char_other() {
+        assert_first_token("->", Token{lexeme: "->".to_string(), kind: TokenKind::Arrow});
+        assert_first_token("::", Token{lexeme: "::".to_string(), kind: TokenKind::ColonColon});
+    }
+
+    #[test]
+    fn keywords_types() {
+        assert_first_token("int", Token{lexeme: "int".to_string(), kind: TokenKind::TypeInt});
+        assert_first_token("long", Token{lexeme: "long".to_string(), kind: TokenKind::TypeLong});
+        assert_first_token("float", Token{lexeme: "float".to_string(), kind: TokenKind::TypeFloat});
+        assert_first_token("double", Token{lexeme: "double".to_string(), kind: TokenKind::TypeDouble});
+        assert_first_token("char", Token{lexeme: "char".to_string(), kind: TokenKind::TypeChar});
+        assert_first_token("void", Token{lexeme: "void".to_string(), kind: TokenKind::TypeVoid});
+    }
+
+    #[test]
+    fn keywords_controlflow() {
+        assert_first_token("if", Token{lexeme: "if".to_string(), kind: TokenKind::If});
+        assert_first_token("else", Token{lexeme: "else".to_string(), kind: TokenKind::Else});
+        assert_first_token("for", Token{lexeme: "for".to_string(), kind: TokenKind::For});
+        assert_first_token("while", Token{lexeme: "while".to_string(), kind: TokenKind::While});
+        assert_first_token("return", Token{lexeme: "return".to_string(), kind: TokenKind::Return});
+    }
 }

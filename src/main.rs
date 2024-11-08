@@ -3,7 +3,7 @@ use std::io::stdin;
 mod lexer;
 mod parser;
 
-fn print_lex_results(input: String) {
+fn print_lex_results(input: &str) {
     lexer::tokenize(input)
         .unwrap()
         .iter()
@@ -18,6 +18,6 @@ fn main() {
     loop {
         let mut input = String::new();
         stdin().read_line(&mut input).unwrap();
-        print_lex_results(input.trim().to_string());
+        print_lex_results(input.trim());
     }
 }
