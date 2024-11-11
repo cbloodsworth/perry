@@ -1,4 +1,6 @@
-use std::{error::Error, iter::Peekable, str::Chars};
+use std::{iter::Peekable, str::Chars};
+
+use anyhow::{Result, Context};
 use itertools::Itertools;
 
 pub struct Lexer<'a> {
@@ -7,13 +9,14 @@ pub struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
-    pub fn lex(input: &'a str) -> Result<Vec<Token>, &'static str> {
+    pub fn lex(input: &'a str) -> Result<Vec<Token>> {
         Self {
             iter: input.chars().peekable(),
             tokens:Vec::new()
         }.tokenize()
     }
-    fn tokenize(mut self) -> Result<Vec<Token>, &'static str> {
+
+    fn tokenize(mut self) -> Result<Vec<Token>> {
         while let Some(c) = self.iter.peek() {
             let token = match c {
                 //---- Single-character tokens
@@ -131,17 +134,16 @@ impl<'a> Lexer<'a> {
 
                 //---- String literals
                 '"' => {
+                    // Consume the quote
                     self.iter.next();
+
+                    // Grab that word
                     let mut word = self.iter
                         .by_ref()
                         .peeking_take_while(|&x| x != '"')
                         .collect::<String>();
 
-                    if self.iter.peek().is_none() {
-                        return Err("Missing terminating \" character.");
-                    }
-
-                    self.iter.next();
+                    self.iter.next().context("Missing terminating \" character.")?;
 
                     // Keep going if that quote was escaped
                     while word.ends_with("\\") {
@@ -154,9 +156,21 @@ impl<'a> Lexer<'a> {
 
                 //---- Char literals
                 '\''=> {
+                    // Proceed past the first quote
                     self.iter.next();
-                    let chr = self.iter.next().ok_or("Missing terminating \' character.")?;
-                    self.iter.next_if_eq(&'\'').ok_or("Expected single character literal.")?;
+
+                    // Grab the character
+                    let chr = self.iter.next()
+                        .context("Missing terminating \' character.")?;
+
+                    // Ensure we got something up next
+                    self.iter.peek()
+                        .context("Missing terminating \' character.")?;
+                    
+                    // Make sure that character is an end quote
+                    self.iter.next_if(|&c| c == '\'')
+                        .context("Multi-character character constant.")?;
+
                     Token{kind: TokenKind::CharLiteral, lexeme: format!("'{}'", chr) }
                 }
 
@@ -273,9 +287,6 @@ pub enum TokenKind {
     Identifier,
     IntegerLiteral, FloatLiteral, 
     StringLiteral, CharLiteral,
-
-    //---- Whitespace
-    Whitespace,
 
     //---- End of File
     EOF,
