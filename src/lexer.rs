@@ -243,7 +243,7 @@ impl<'a> Lexer<'a> {
 
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub kind: TokenKind,
     pub lexeme: String
@@ -280,6 +280,7 @@ pub enum TokenKind {
 
     // Keywords
     If, Else, While, For, Return,
+    True, False,
 
     //---- Types
     TypeInt, TypeLong,
