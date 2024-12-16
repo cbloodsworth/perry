@@ -40,7 +40,7 @@ impl Parser {
 
     /// Returns true if we are done.
     fn end(&self) -> bool {
-        self.cursor >= self.tokens.len()
+        self.cursor >= self.tokens.len() - 1 
     }
 
     /// Advances cursor. Returns new token.
@@ -92,9 +92,8 @@ impl Parser {
     fn program(&mut self) -> Result<ASTNode> {
         // TODO: For now, a program is a single expression.
         let program = self.expression()?;
-        eprintln!("self.peek() = {:?}", self.peek());
 
-        if !self.end() { Err(anyhow!("Expected EOF.")) } 
+        if !self.end() { Err(anyhow!("Expected EOF, got kind: {:?}", self.peek_kind())) } 
         else { Ok(program) }
     }
 
@@ -180,9 +179,8 @@ impl Parser {
 
                 let expr = Rc::new(self.expression()?);
 
-                let right = self.matches(&[TokenKind::RParen])
-                                .cloned()
-                                .context("Expected ')' after expression.")?;
+                let right = self.peek().take_if(|x| x.kind == TokenKind::RParen).cloned()
+                    .context(format!("Expected ')' after expression, got: {:?} at position {}", self.peek(), self.cursor()))?;
 
                 ASTNode::Grouping { expr, left, right }
             }

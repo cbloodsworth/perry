@@ -6,14 +6,14 @@ mod parser;
 fn print_lex_results(input: &str) {
     match lexer::Lexer::lex(input) {
         Ok(x) => {
-            x.iter().for_each(|x| {
-                let lexeme = format!("[{}]", x.lexeme);
+            x.iter().enumerate().for_each(|(i,x)| {
+                let lexeme = format!("{}: [{}]", i, x.lexeme);
                 print!("{0: <10}: ", lexeme);
                 println!("{:?}", x.kind)
             });
         }
         Err(err) => {
-            println!("ERROR: {}", err);
+            println!("LEXING ERROR: {}", err);
         }
     }
 }
@@ -24,7 +24,7 @@ fn print_parse_results(input: &str) {
             println!("{:?}", x);
         }
         Err(err) => {
-            println!("ERROR: {}", err);
+            println!("PARSING ERROR: {}", err);
         }
     }
 }
