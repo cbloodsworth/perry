@@ -98,7 +98,9 @@ impl<'a> Lexer<'a> {
                         "for"    => {TokenKind::For}
                         "if"     => {TokenKind::If}
                         "else"   => {TokenKind::Else}
-                        "return"   => {TokenKind::Return}
+                        "return" => {TokenKind::Return}
+                        "true"   => {TokenKind::True}
+                        "false"  => {TokenKind::False}
 
                         // Types
                         "int"    => {TokenKind::TypeInt}

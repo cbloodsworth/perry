@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use anyhow::{Result, Error, Context, anyhow};
 
 use crate::lexer::{self, Token, TokenKind};
@@ -10,15 +12,15 @@ pub enum ASTNode {
     Boolean (bool),
     UnaryExpr {
         op: Token,
-        expr: Box<ASTNode>
+        expr: Rc<ASTNode>
     },
     BinaryExpr {
         op: Token,
-        left: Box<ASTNode>,
-        right: Box<ASTNode>
+        left: Rc<ASTNode>,
+        right: Rc<ASTNode>
     },
     Grouping {
-        expr: Box<ASTNode>,
+        expr: Rc<ASTNode>,
         left: Token,
         right: Token,
     }
@@ -90,6 +92,7 @@ impl Parser {
     fn program(&mut self) -> Result<ASTNode> {
         // TODO: For now, a program is a single expression.
         let program = self.expression()?;
+        eprintln!("self.peek() = {:?}", self.peek());
 
         if !self.end() { Err(anyhow!("Expected EOF.")) } 
         else { Ok(program) }
@@ -103,9 +106,11 @@ impl Parser {
 
     fn equality(&mut self) -> Result<ASTNode> {
         let mut expr = self.comparison()?;
-        while let Some(op) = self.matches(&[TokenKind::BangEqual, TokenKind::EqualEqual]).cloned() {
-            let left = Box::new(expr.clone());
-            let right = Box::new(self.comparison()?);
+        while let Some(op) = self.matches(&[TokenKind::BangEqual, 
+                                            TokenKind::EqualEqual]) {
+            let op = op.clone();
+            let left = Rc::new(expr.clone());
+            let right = Rc::new(self.comparison()?);
             expr = ASTNode::BinaryExpr { op, left, right };
         }
 
@@ -115,9 +120,10 @@ impl Parser {
     fn comparison(&mut self) -> Result<ASTNode> {
         let mut expr = self.term()?;
         while let Some(op) = self.matches(&[TokenKind::Greater, TokenKind::GreaterEqual, 
-                                            TokenKind::Less, TokenKind::LessEqual]).cloned() {
-            let left = Box::new(expr.clone());
-            let right = Box::new(self.term()?);
+                                            TokenKind::Less, TokenKind::LessEqual]) {
+            let op = op.clone();
+            let left = Rc::new(expr.clone());
+            let right = Rc::new(self.term()?);
             expr = ASTNode::BinaryExpr { op, left, right };
         }
 
@@ -126,9 +132,10 @@ impl Parser {
 
     fn term(&mut self) -> Result<ASTNode> {
         let mut expr = self.factor()?;
-        while let Some(op) = self.matches(&[TokenKind::Minus, TokenKind::Plus]).cloned() {
-            let left = Box::new(expr.clone());
-            let right = Box::new(self.factor()?);
+        while let Some(op) = self.matches(&[TokenKind::Minus, TokenKind::Plus]) {
+            let op = op.clone();
+            let left = Rc::new(expr.clone());
+            let right = Rc::new(self.factor()?);
             expr = ASTNode::BinaryExpr { op, left, right };
         }
 
@@ -137,9 +144,10 @@ impl Parser {
 
     fn factor(&mut self) -> Result<ASTNode> {
         let mut expr = self.unary()?;
-        while let Some(op) = self.matches(&[TokenKind::Slash, TokenKind::Star]).cloned() {
-            let left = Box::new(expr.clone());
-            let right = Box::new(self.unary()?);
+        while let Some(op) = self.matches(&[TokenKind::Slash, TokenKind::Star]) {
+            let op = op.clone();
+            let left = Rc::new(expr.clone());
+            let right = Rc::new(self.unary()?);
             expr = ASTNode::BinaryExpr { op, left, right };
         }
 
@@ -147,9 +155,9 @@ impl Parser {
     }
 
     fn unary(&mut self) -> Result<ASTNode, Error> {
-        if let Some(op) = self.matches(&[TokenKind::Bang, TokenKind::Minus]).cloned() {
-            let expr = Box::new(self.unary()?);
-
+        if let Some(op) = self.matches(&[TokenKind::Bang, TokenKind::Minus]) {
+            let op = op.clone();
+            let expr = Rc::new(self.unary()?);
             Ok(ASTNode::UnaryExpr { op, expr })
         }
         else { Ok(self.primary()?) }
@@ -170,7 +178,7 @@ impl Parser {
 
                 self.advance();
 
-                let expr = Box::new(self.expression()?);
+                let expr = Rc::new(self.expression()?);
 
                 let right = self.matches(&[TokenKind::RParen])
                                 .cloned()
