@@ -10,6 +10,7 @@ pub enum ASTNode {
     Float (f32),
     String (String),
     Boolean (bool),
+    Identifier (String),
     UnaryExpr {
         op: Token,
         expr: Rc<ASTNode>
@@ -23,7 +24,12 @@ pub enum ASTNode {
         expr: Rc<ASTNode>,
         left: Token,
         right: Token,
-    }
+    },
+    Call {
+        callee: Rc<ASTNode>,
+        paren: Token,   // used for error generation
+        args: Vec<Rc<ASTNode>>
+    },
 }
 
 
@@ -60,6 +66,13 @@ impl Parser {
         self.tokens.get(self.cursor).and_then(|token| Some(&token.kind))
     }
 
+    /// Returns true if the next token's kind is what we pass.
+    /// 
+    /// Does not advance the cursor.
+    fn next_is_kind(&self, kind: TokenKind) -> bool {
+        return self.peek_kind() == Some(&kind)
+    }
+
     /// Returns the token previous to the cursor.
     fn previous(&self) -> Option<&Token> {
         self.tokens.get(self.cursor - 1)
@@ -69,7 +82,7 @@ impl Parser {
     /// the next token is one of the ones we expect.
     /// 
     /// Returns None otherwise, and leaves the cursor unchanged.
-    fn matches(&mut self, targets: &[TokenKind]) -> Option<&Token> {
+    fn eat_any_of(&mut self, targets: &[TokenKind]) -> Option<&Token> {
         for target in targets {
             if self.peek_kind() == Some(target) {
                 self.advance();
@@ -77,6 +90,18 @@ impl Parser {
             }
         };
 
+        None
+    }
+
+    /// Returns the next token and advances the cursor if 
+    /// the next token is the one we expect.
+    /// 
+    /// Returns None otherwise, and leaves the cursor unchanged.
+    fn eat_one(&mut self, target: TokenKind) -> Option<&Token> {
+        if self.peek_kind() == Some(&target) {
+            self.advance();
+            return self.previous() 
+        }
         None
     }
 }
@@ -91,21 +116,40 @@ impl Parser {
 
     fn program(&mut self) -> Result<ASTNode> {
         // TODO: For now, a program is a single expression.
-        let program = self.expression()?;
+        let program = self.call()?;
 
         if !self.end() { Err(anyhow!("Expected EOF, got kind: {:?}", self.peek_kind())) } 
         else { Ok(program) }
     }
 
-    /// <expression> ::= <assignment-expression>
-    ///                | <expression> , <assignment-expression>
+    fn call(&mut self) -> Result<ASTNode> {
+        let mut expr = self.primary()?;
+        while self.eat_one(TokenKind::LParen).is_some() {
+            let mut args = Vec::<Rc<ASTNode>>::new();
+            while !self.next_is_kind(TokenKind::RParen) {
+                args.push(Rc::new(self.expression()?));
+                if !self.eat_one(TokenKind::Comma).is_some() {
+                    break;
+                }
+            }
+
+            let callee = Rc::new(expr);
+            let paren = self.eat_one(TokenKind::RParen).cloned()
+                .context("Expected ')' after argument list.")?;
+
+            expr = ASTNode::Call{ callee, paren, args };
+        }
+
+        Ok(expr)
+    }
+
     fn expression(&mut self) -> Result<ASTNode> {
         self.equality()
     }
 
     fn equality(&mut self) -> Result<ASTNode> {
         let mut expr = self.comparison()?;
-        while let Some(op) = self.matches(&[TokenKind::BangEqual, 
+        while let Some(op) = self.eat_any_of(&[TokenKind::BangEqual, 
                                             TokenKind::EqualEqual]) {
             let op = op.clone();
             let left = Rc::new(expr.clone());
@@ -118,7 +162,7 @@ impl Parser {
 
     fn comparison(&mut self) -> Result<ASTNode> {
         let mut expr = self.term()?;
-        while let Some(op) = self.matches(&[TokenKind::Greater, TokenKind::GreaterEqual, 
+        while let Some(op) = self.eat_any_of(&[TokenKind::Greater, TokenKind::GreaterEqual, 
                                             TokenKind::Less, TokenKind::LessEqual]) {
             let op = op.clone();
             let left = Rc::new(expr.clone());
@@ -131,7 +175,7 @@ impl Parser {
 
     fn term(&mut self) -> Result<ASTNode> {
         let mut expr = self.factor()?;
-        while let Some(op) = self.matches(&[TokenKind::Minus, TokenKind::Plus]) {
+        while let Some(op) = self.eat_any_of(&[TokenKind::Minus, TokenKind::Plus]) {
             let op = op.clone();
             let left = Rc::new(expr.clone());
             let right = Rc::new(self.factor()?);
@@ -143,7 +187,7 @@ impl Parser {
 
     fn factor(&mut self) -> Result<ASTNode> {
         let mut expr = self.unary()?;
-        while let Some(op) = self.matches(&[TokenKind::Slash, TokenKind::Star]) {
+        while let Some(op) = self.eat_any_of(&[TokenKind::Slash, TokenKind::Star]) {
             let op = op.clone();
             let left = Rc::new(expr.clone());
             let right = Rc::new(self.unary()?);
@@ -154,7 +198,7 @@ impl Parser {
     }
 
     fn unary(&mut self) -> Result<ASTNode, Error> {
-        if let Some(op) = self.matches(&[TokenKind::Bang, TokenKind::Minus]) {
+        if let Some(op) = self.eat_any_of(&[TokenKind::Bang, TokenKind::Minus]) {
             let op = op.clone();
             let expr = Rc::new(self.unary()?);
             Ok(ASTNode::UnaryExpr { op, expr })
@@ -170,22 +214,24 @@ impl Parser {
             TokenKind::IntegerLiteral    => ASTNode::Integer(token.lexeme.parse()?),
             TokenKind::FloatLiteral      => ASTNode::Float(token.lexeme.parse()?),
             TokenKind::StringLiteral     => ASTNode::String(token.lexeme.clone()),
+            TokenKind::Identifier        => ASTNode::Identifier(token.lexeme.clone()),
             TokenKind::LParen            => {
                 let left = self.peek()
                                .cloned()
-                               .context("Internal error.")?;
+                               .context("Internal error.")?;  // when would this even happen
 
                 self.advance();
 
                 let expr = Rc::new(self.expression()?);
 
-                let right = self.peek().take_if(|x| x.kind == TokenKind::RParen).cloned()
-                    .context(format!("Expected ')' after expression, got: {:?} at position {}", self.peek(), self.cursor()))?;
+                let right = self.eat_one(TokenKind::RParen).cloned()
+                    .context(format!("Expected ')' after expression."))?;
 
-                ASTNode::Grouping { expr, left, right }
+                // We are already on the next token, early return
+                return Ok(ASTNode::Grouping { expr, left, right })
             }
             _ => {
-                ASTNode::Integer(-1)
+                panic!("Unimplemented TokenKind: {:?}", token.kind);
             }
         };
 
