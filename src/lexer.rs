@@ -1,5 +1,4 @@
 use std::{iter::Peekable, str::Chars};
-
 use anyhow::{Result, Context};
 use itertools::Itertools;
 

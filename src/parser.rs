@@ -1,8 +1,9 @@
 use std::rc::Rc;
-
 use anyhow::{Result, Error, Context, anyhow};
-
 use crate::lexer::{self, Token, TokenKind};
+
+#[cfg(test)]
+mod tests;
 
 #[derive (Debug, Clone)]
 pub enum ASTNode {
@@ -231,7 +232,7 @@ impl Parser {
                 return Ok(ASTNode::Grouping { expr, left, right })
             }
             _ => {
-                panic!("Unimplemented TokenKind: {:?}", token.kind);
+                return Err(anyhow!("Unimplemented TokenKind: {:?}", token.kind));
             }
         };
 
