@@ -7,11 +7,13 @@ mod tests;
 
 #[derive (Debug, Clone)]
 pub enum ASTNode {
-    Integer (i32),
-    Float (f32),
-    String (String),
-    Boolean (bool),
-    Identifier (String),
+    // Literals
+    IntegerLiteral { token: Token, val: i32, },
+    FloatLiteral   { token: Token, val: f32, },
+    StringLiteral  { token: Token, val: String, },
+    BoolLiteral    { token: Token, val: bool },
+
+    Identifier     { token: Token, name: String, },
     UnaryExpr {
         op: Token,
         expr: Rc<ASTNode>
@@ -208,14 +210,17 @@ impl Parser {
     }
 
     fn primary(&mut self) -> Result<ASTNode, Error> {
-        let token = self.peek().context("Expected PRIMARY token")?;
+        let token = self.peek().context("Expected PRIMARY token").cloned()?;
         let node = match token.kind {
-            TokenKind::True              => ASTNode::Boolean(true),
-            TokenKind::False             => ASTNode::Boolean(true),
-            TokenKind::IntegerLiteral    => ASTNode::Integer(token.lexeme.parse()?),
-            TokenKind::FloatLiteral      => ASTNode::Float(token.lexeme.parse()?),
-            TokenKind::StringLiteral     => ASTNode::String(token.lexeme.clone()),
-            TokenKind::Identifier        => ASTNode::Identifier(token.lexeme.clone()),
+            TokenKind::True              => ASTNode::BoolLiteral    {val: true,                  token},
+            TokenKind::False             => ASTNode::BoolLiteral    {val: false,                 token},
+            TokenKind::IntegerLiteral    => ASTNode::IntegerLiteral {val: token.lexeme.parse()?, token},
+            TokenKind::FloatLiteral      => ASTNode::FloatLiteral   {val: token.lexeme.parse()?, token},
+            TokenKind::StringLiteral     => ASTNode::StringLiteral  {val: token.lexeme.clone(),  token},
+
+            TokenKind::Identifier        => ASTNode::Identifier     {name: token.lexeme.clone(), token},
+
+            // Parenthesized expressions, aka groupings
             TokenKind::LParen            => {
                 let left = self.peek()
                                .cloned()
@@ -231,6 +236,8 @@ impl Parser {
                 // We are already on the next token, early return
                 return Ok(ASTNode::Grouping { expr, left, right })
             }
+
+            // Unimplemented
             _ => {
                 return Err(anyhow!("Unimplemented TokenKind: {:?}", token.kind));
             }

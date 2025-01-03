@@ -6,8 +6,8 @@ mod parser;
 fn print_lex_results(input: &str) {
     match lexer::Lexer::lex(input) {
         Ok(x) => {
-            x.iter().enumerate().for_each(|(i,x)| {
-                let lexeme = format!("{}: [{}]", i, x.lexeme);
+            x.iter().for_each(|x| {
+                let lexeme = format!("{}:{}: [{}]", x.line_number, x.col_number, x.lexeme);
                 print!("{0: <10}: ", lexeme);
                 println!("{:?}", x.kind)
             });
@@ -54,6 +54,7 @@ fn parse_repl() {
             match byte {
                 b'\n' => {
                     print!("\n");
+                    print_lex_results(&input);
                     print_parse_results(&input);
                     input.clear();
                     print!("perry> ");
