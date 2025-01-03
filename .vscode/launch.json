@@ -7,15 +7,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'pcc'",
+            "name": "Debug executable 'perry'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=pcc",
-                    "--package=pcc"
+                    "--bin=perry",
+                    "--package=perry"
                 ],
                 "filter": {
-                    "name": "pcc",
+                    "name": "perry",
                     "kind": "bin"
                 }
             },
@@ -25,16 +25,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'pcc'",
+            "name": "Debug unit tests in executable 'perry'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=pcc",
-                    "--package=pcc"
+                    "--bin=perry",
+                    "--package=perry"
                 ],
                 "filter": {
-                    "name": "pcc",
+                    "name": "perry",
                     "kind": "bin"
                 }
             },

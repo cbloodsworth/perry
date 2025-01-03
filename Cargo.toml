@@ -1,8 +1,9 @@
 [package]
-name = "pcc"
+name = "perry"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 anyhow = "1.0.93"
 itertools = "0.13.0"
+libc = "0.2.169"
