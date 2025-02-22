@@ -3,7 +3,7 @@ ifeq (pcc,$(firstword $(MAKECMDGOALS)))
   $(eval $(RUN_ARGS):;@:)
 endif
 
-.PHONY: pcc test.c
+.PHONY: pcc test.pr
 
 pcc: build
 	@./target/release/pcc $(RUN_ARGS)

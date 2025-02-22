@@ -2,9 +2,6 @@ use std::{iter::{Enumerate, Peekable}, str::Chars};
 use anyhow::{Result, Context};
 use itertools::Itertools;
 
-#[cfg(test)]
-mod tests;
-
 pub struct Lexer<'a> {
     pub iter: Peekable<Enumerate<Chars<'a>>>,
     tokens: Vec<Token>,

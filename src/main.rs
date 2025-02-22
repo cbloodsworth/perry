@@ -3,8 +3,11 @@ use std::{fs::File, io::{stdin, stdout, Read, Write}, path::Path};
 mod lexer;
 mod parser;
 
+use lexer::Lexer;
+use parser::Parser;
+
 fn print_lex_results(input: &str) {
-    match lexer::Lexer::lex(input) {
+    match Lexer::lex(input) {
         Ok(x) => {
             x.iter().for_each(|x| {
                 let lexeme = format!("{}:{}: [{}]", x.line_number, x.col_number, x.lexeme);
@@ -19,7 +22,7 @@ fn print_lex_results(input: &str) {
 }
 
 fn print_parse_results(input: &str) {
-    match parser::Parser::parse(input) {
+    match Parser::parse(input) {
         Ok(x) => {
             println!("{:?}", x);
         }
@@ -88,7 +91,7 @@ fn main() {
 
     if args.contains(&"--repl".to_string()) { parse_repl(); }
 
-    let default = String::from("test.c");
+    let default = String::from("test.pr");
     let filename = args.get(1).unwrap_or(&default);
 
     match File::open(Path::new(filename)) {
