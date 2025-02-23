@@ -357,6 +357,7 @@ pub enum TokenKind {
     StringLiteral, CharLiteral,
 
     //---- End of File
+    #[allow(clippy::upper_case_acronyms)]
     EOF,
 
     //---- Unknown

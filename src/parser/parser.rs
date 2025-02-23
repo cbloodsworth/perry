@@ -1,15 +1,13 @@
 use std::rc::Rc;
 use anyhow::{Result, Error, Context, anyhow};
-use crate::lexer::{self, Token, TokenKind};
 
-#[cfg(test)]
-mod tests;
+use crate::lexer::*;
 
 #[derive (Debug, Clone)]
 pub enum ASTNode {
     // Literals
-    IntegerLiteral { token: Token, val: i32, },
-    FloatLiteral   { token: Token, val: f32, },
+    IntegerLiteral { token: Token, val: i64, },
+    FloatLiteral   { token: Token, val: f64, },
     StringLiteral  { token: Token, val: String, },
     BoolLiteral    { token: Token, val: bool },
 
@@ -66,7 +64,7 @@ impl Parser {
 
     /// Returns the next token's kind without advancing the cursor.
     fn peek_kind(&self) -> Option<&TokenKind> {
-        self.tokens.get(self.cursor).and_then(|token| Some(&token.kind))
+        self.tokens.get(self.cursor).map(|token| &token.kind)
     }
 
     /// Returns true if the next token's kind is what we pass.
@@ -113,7 +111,7 @@ impl Parser {
     pub fn parse(input: &str) -> Result<ASTNode> {
         Self {
             cursor: 0,
-            tokens: lexer::Lexer::lex(input)?
+            tokens: Lexer::lex(input)?
         }.program()
     }
 
@@ -131,7 +129,7 @@ impl Parser {
             let mut args = Vec::<Rc<ASTNode>>::new();
             while !self.next_is_kind(TokenKind::RParen) {
                 args.push(Rc::new(self.expression()?));
-                if !self.eat_one(TokenKind::Comma).is_some() {
+                if self.eat_one(TokenKind::Comma).is_none() {
                     break;
                 }
             }
@@ -231,7 +229,7 @@ impl Parser {
                 let expr = Rc::new(self.expression()?);
 
                 let right = self.eat_one(TokenKind::RParen).cloned()
-                    .context(format!("Expected ')' after expression."))?;
+                    .context("Expected ')' after expression.")?;
 
                 // We are already on the next token, early return
                 return Ok(ASTNode::Grouping { expr, left, right })

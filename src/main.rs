@@ -56,7 +56,7 @@ fn parse_repl() {
             let byte = byte.unwrap();
             match byte {
                 b'\n' => {
-                    print!("\n");
+                    println!();
                     print_lex_results(&input);
                     print_parse_results(&input);
                     input.clear();
@@ -100,7 +100,7 @@ fn main() {
             file.read_to_string(input).expect("Could not read file {}");
 
             print_lex_results(&input.clone());
-            print_parse_results(&input);
+            print_parse_results(input);
         }
         Err(why) => {
             print!("Could not open {}, {}", filename, why)
