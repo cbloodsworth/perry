@@ -44,7 +44,7 @@ impl Interpreter {
 
             UnaryExpr  { op, expr }            => self.eval_unary(),
             BinaryExpr { op, left, right }     => self.eval_binary(),
-            Grouping   { expr, left, right }   => self.eval_grouping(),
+            Grouping   { expr, left_delim: left, right_delim: right }   => self.eval_grouping(),
             Call       { callee, paren, args } => self.eval_call(),
         }
     }

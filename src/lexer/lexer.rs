@@ -34,7 +34,7 @@ impl std::fmt::Display for Token {
 impl<'a> Lexer<'a> {
     pub fn lex(input: &'a str) -> Result<Vec<Token>, LexerError> {
         Self {
-            char_iter: input.chars().enumerate().peekable(),
+            char_iter: input.trim().chars().enumerate().peekable(),
             tokens:Vec::new(),
             line_number: 1,
             last_line_break: 0,
@@ -239,7 +239,7 @@ impl<'a> Lexer<'a> {
                     while self.char_iter.peek().is_some_and(|(_,c)| c.is_whitespace()) {
                         if let Some((_,'\n')) = self.char_iter.peek() {
                             self.line_number += 1;
-                            self.last_line_break = i;
+                            self.last_line_break = i + 1;  // one past so we skip the \n character
                         }
                         self.char_iter.next();
                     }

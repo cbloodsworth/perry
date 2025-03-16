@@ -4,7 +4,6 @@ use crate::lexer::*;
 
 type ParserResult<T> = std::result::Result<T, ParserError>;
 
-
 #[derive (Debug, Clone)]
 pub enum ASTNode {
     // Literals
@@ -25,8 +24,8 @@ pub enum ASTNode {
     },
     Grouping {
         expr: Rc<ASTNode>,
-        left: Token,
-        right: Token,
+        left_delim: Token,
+        right_delim: Token,
     },
     Call {
         callee: Rc<ASTNode>,
@@ -42,19 +41,9 @@ pub enum ASTNode {
 pub struct Parser {
     cursor: usize,
     tokens: Vec<Token>,
-    
-    /// Index indicating the start of the current expression
-    start_expr: usize,
 }
 
 impl Parser {
-    fn to_err<T: std::fmt::Display>(&self, msg: T) -> ParserError {
-        ParserError {
-            message: msg.to_string(),
-            token: self.tokens.get(self.start_expr).cloned(),
-        }
-    }
-
     /// Returns true if we are done.
     fn end(&self) -> bool {
         self.cursor >= self.tokens.len() - 1 
@@ -63,6 +52,9 @@ impl Parser {
     /// Advances cursor. Returns new token.
     fn advance(&mut self) -> Option<&Token> {
         // Advance the cursor if we're not at the end
+        if let Some(tok) = self.peek() {
+            println!("advancing parser from {:?}:{}:{}", tok.lexeme, tok.line_number, tok.col_number);
+        }
         self.cursor += 1;
         self.peek()
     }
@@ -122,7 +114,6 @@ impl Parser {
         Self {
             cursor: 0,
             tokens: input,
-            start_expr: 0,
         }.program()
     }
 
@@ -130,7 +121,6 @@ impl Parser {
         // TODO: For now, a program is a single expression.
         let mut exprs = Vec::new();
         while self.peek().is_some() {
-            self.start_expr = self.cursor;
             exprs.push(Rc::new(self.call()?));
         }
 
@@ -139,7 +129,8 @@ impl Parser {
 
     fn call(&mut self) -> ParserResult<ASTNode> {
         let mut expr = self.primary()?;
-        while self.eat_one(TokenKind::LParen).is_some() {
+        while let Some(lparen) = self.eat_one(TokenKind::LParen) {
+            let lparen = lparen.clone();
             let mut args = Vec::<Rc<ASTNode>>::new();
             while !self.next_is_kind(TokenKind::RParen) {
                 args.push(Rc::new(self.expression()?));
@@ -149,10 +140,11 @@ impl Parser {
             }
 
             let callee = Rc::new(expr);
-            let paren = self.eat_one(TokenKind::RParen).cloned()
-                .ok_or_else(|| self.to_err("unmatched '('"))?;
 
-            expr = ASTNode::Call{ callee, paren, args };
+            match self.eat_one(TokenKind::RParen) {
+                Some(rparen) => expr = ASTNode::Call{ callee, paren: rparen.clone(), args },
+                None => return Err(self.to_err_with_token("unmatched '('", lparen))
+            }
         }
 
         Ok(expr)
@@ -190,8 +182,8 @@ impl Parser {
 
     fn term(&mut self) -> ParserResult<ASTNode> {
         let mut expr = self.factor()?;
-        while let Some(op) = self.eat_any_of(&[TokenKind::Minus, TokenKind::Plus]) {
-            let op = op.clone();
+        println!("Just nommed {expr:?}, \n--> next token: {:?}", self.peek());
+        while let Some(op) = self.eat_any_of(&[TokenKind::Minus, TokenKind::Plus]).cloned() {
             let left = Rc::new(expr.clone());
             let right = Rc::new(self.factor()?);
             expr = ASTNode::BinaryExpr { op, left, right };
@@ -222,62 +214,79 @@ impl Parser {
     }
 
     fn primary(&mut self) -> ParserResult<ASTNode> {
-        let token = self.peek()
+        let curr_token = self.peek()
             .ok_or_else(|| self.to_err("expected PRIMARY token"))?
             .clone();
 
-        let node = match token.kind {
-            TokenKind::True              => ASTNode::BoolLiteral    {val: true,                  token},
-            TokenKind::False             => ASTNode::BoolLiteral    {val: false,                 token},
-            TokenKind::IntegerLiteral    =>  {
-                ASTNode::IntegerLiteral {
-                    val: token.lexeme.parse().map_err(|err| self.to_err(err))?, 
-                    token
-                }
-            },
-            TokenKind::FloatLiteral      => {
-                ASTNode::FloatLiteral {
-                    val: token.lexeme.parse().map_err(|err| self.to_err(err))?, 
-                    token
-                }
-            },
-            TokenKind::StringLiteral     => ASTNode::StringLiteral  {val: token.lexeme.clone(),  token},
+        self.advance();
 
-            TokenKind::Identifier        => ASTNode::Identifier     {name: token.lexeme.clone(), token},
+        let node = match curr_token.kind {
+            TokenKind::True => {
+                ASTNode::BoolLiteral {val: true, token: curr_token}
+            },
+            TokenKind::False => {
+                ASTNode::BoolLiteral {val: false, token: curr_token}
+            },
+            TokenKind::IntegerLiteral => {
+                ASTNode::IntegerLiteral {
+                    val: curr_token.lexeme.parse().map_err(|err| self.to_err(err))?, 
+                    token: curr_token
+                }
+            },
+            TokenKind::FloatLiteral => {
+                ASTNode::FloatLiteral {
+                    val: curr_token.lexeme.parse().map_err(|err| self.to_err(err))?, 
+                    token: curr_token
+                }
+            },
+            TokenKind::StringLiteral => {
+                ASTNode::StringLiteral {val: curr_token.lexeme.clone(),  token: curr_token}
+            },
+
+            TokenKind::Identifier => {
+                ASTNode::Identifier {name: curr_token.lexeme.clone(), token: curr_token}
+            },
 
             // Parenthesized expressions, aka groupings
-            TokenKind::LParen            => {
-                let left = self.peek()
-                               .cloned()
-                               .expect("Internal error.");  // when would this even happen
-
-                self.advance();
+            TokenKind::LParen => {
+                let left_delim = curr_token;
 
                 let expr = Rc::new(self.expression()?);
 
-                let right = self.eat_one(TokenKind::RParen).cloned()
-                    .ok_or_else(|| self.to_err("unmatched '('"))?;
-
-                // We are already on the next token, early return
-                return Ok(ASTNode::Grouping { expr, left, right })
+                match self.eat_one(TokenKind::RParen).cloned() {
+                    Some(right_delim) => ASTNode::Grouping { expr, left_delim, right_delim},
+                    None => Err(self.to_err_with_token("unmatched '('", left_delim))?
+                }
             }
 
             // Unimplemented
             _ => {
-                return Err(self.to_err(format!("unimplemented tokenkind: {:?}", token.kind)));
+                return Err(self.to_err(format!("unimplemented tokenkind: {:?}", curr_token.kind)));
             }
         };
 
-        self.advance();
-
         Ok(node)
+    }
+
+    fn to_err<T: std::fmt::Display>(&self, msg: T) -> ParserError {
+        ParserError {
+            message: msg.to_string(),
+            token: self.peek().cloned(),
+        }
+    }
+
+    fn to_err_with_token<T: std::fmt::Display>(&self, msg: T, token: Token) -> ParserError {
+        ParserError {
+            message: msg.to_string(),
+            token: Some(token),
+        }
     }
 }
 
 #[derive(Debug)]
 pub struct ParserError {
-    message: String,
-    token: Option<Token>,
+    pub message: String,
+    pub token: Option<Token>,
 }
 
 impl std::fmt::Display for ParserError {

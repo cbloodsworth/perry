@@ -18,6 +18,10 @@ fn main() -> Result<(), perry::CompilerError> {
                 let input = &mut String::new();
                 file.read_to_string(input).expect("Could not read file {}");
 
+                println!("=============");
+                println!("INPUT PROGRAM:\n{input}");
+                println!("=============");
+
                 perry::print_lex_results(input)?;
                 perry::print_parse_results(input)?;
             }
