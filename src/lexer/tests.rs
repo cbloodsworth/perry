@@ -1,3 +1,20 @@
+///=================== Lexer test helpers. ===================
+macro_rules! validate_tokens {
+    ($program:expr, $($expected_lexeme:expr),+) => {
+        let mut tokens = lex($program)
+            .expect(&format!("Internal error: Could not lex the given program: {}.", $program))
+            .into_iter();
+        $(
+            let token = tokens.next().expect(&format!( 
+                    "Expected token with lexeme \"{}\", got end of file.", $expected_lexeme));
+
+            // Check that the lexeme is what we expect
+            assert_eq!(token.lexeme, $expected_lexeme, 
+                "Token's actual lexeme differed from expected lexeme");
+        )+
+    };
+}
+
 #[cfg(test)]
 mod lexer_tests {
     use crate::lexer::*;

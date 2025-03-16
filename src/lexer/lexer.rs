@@ -1,26 +1,48 @@
 use std::{iter::{Enumerate, Peekable}, str::Chars};
-use anyhow::{Result, Context};
+use anyhow::Context;
 use itertools::Itertools;
 
 pub struct Lexer<'a> {
-    pub iter: Peekable<Enumerate<Chars<'a>>>,
+    pub char_iter: Peekable<Enumerate<Chars<'a>>>,
     tokens: Vec<Token>,
     line_number: usize,
     last_line_break: usize,
 }
 
+#[derive(Debug)]
+pub struct LexerError {
+    message: String,
+    line_number: usize,
+    col_number: usize,
+}
+
+impl std::fmt::Display for LexerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}:{}", self.message, self.line_number, self.col_number)
+    }
+}
+
+impl std::fmt::Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self { kind, lexeme, line_number, col_number } = self;
+        let lexeme = format!("{line_number}:{col_number}: [{lexeme}]");
+        write!(f, "{0:<10}:{kind:?}", lexeme)
+    }
+}
+
+
 impl<'a> Lexer<'a> {
-    pub fn lex(input: &'a str) -> Result<Vec<Token>> {
+    pub fn lex(input: &'a str) -> Result<Vec<Token>, LexerError> {
         Self {
-            iter: input.chars().enumerate().peekable(),
+            char_iter: input.chars().enumerate().peekable(),
             tokens:Vec::new(),
             line_number: 1,
             last_line_break: 0,
         }.tokenize()
     }
 
-    fn tokenize(mut self) -> Result<Vec<Token>> {
-        while let Some(&(i, c)) = self.iter.peek() {
+    fn tokenize(mut self) -> Result<Vec<Token>, LexerError> {
+        while let Some(&(i, c)) = self.char_iter.peek() {
             let token = match c {
                 //---- Single-character tokens
                 ';' => self.match_one(TokenKind::Semicolon),
@@ -86,7 +108,7 @@ impl<'a> Lexer<'a> {
 
                 //---- Identifier
                 c if c.is_alphabetic() || c == '_' => {
-                    let lexeme = self.iter
+                    let lexeme = self.char_iter
                         .by_ref()
                         .peeking_take_while(|&(_,char)| char.is_alphanumeric() || char == '_')
                         .map(|(_,c)| c)  // only collect characters, not indeces
@@ -113,7 +135,6 @@ impl<'a> Lexer<'a> {
                         _ => {TokenKind::Identifier}
                     };
 
-
                     Token {
                         kind,
                         lexeme,
@@ -124,19 +145,19 @@ impl<'a> Lexer<'a> {
 
                 //---- Numeric literals
                 c if c.is_numeric() => {
-                    let mut lexeme = self.iter
+                    let mut lexeme = self.char_iter
                         .by_ref()
                         .peeking_take_while(|(_,c)| c.is_numeric())
                         .map(|(_,c)| c)  // only collect characters, not indeces
                         .collect::<String>();
 
                     // If stopped at a '.' it's a float (example: 3.14)
-                    let kind = if self.iter.peek().is_some_and(|&(_, c)| c == '.') {
+                    let kind = if self.char_iter.peek().is_some_and(|&(_, c)| c == '.') {
                         lexeme.push('.');
-                        self.iter.next();
+                        self.char_iter.next();
 
                         // Keep taking the numbers after the .
-                        lexeme.extend(self.iter
+                        lexeme.extend(self.char_iter
                             .by_ref()
                             .map(|(_,c)| c)
                             .peekable()
@@ -159,21 +180,23 @@ impl<'a> Lexer<'a> {
                 //---- String literals
                 '"' => {
                     // Consume the quote
-                    self.iter.next();
+                    self.char_iter.next();
 
                     // Grab that word
-                    let mut word = self.iter
+                    let mut word = self.char_iter
                         .by_ref()
                         .peeking_take_while(|&(_,c)| c != '"')
                         .map(|(_,c)| c)
                         .collect::<String>();
 
-                    self.iter.next().context("Missing terminating \" character.")?;
+                    if self.char_iter.next().is_none() {
+                        return Err(self.into_err(i, "missing terminating \" character"));
+                    }
 
                     // Keep going if that quote was escaped
                     while word.ends_with("\\") {
                         word.push('"');
-                        word.extend(self.iter.by_ref().map(|(_,c)| c).take_while(|c| c != &'"'));
+                        word.extend(self.char_iter.by_ref().map(|(_,c)| c).take_while(|c| c != &'"'));
                     }
 
                     Token {
@@ -187,19 +210,21 @@ impl<'a> Lexer<'a> {
                 //---- Char literals
                 '\''=> {
                     // Proceed past the first quote
-                    self.iter.next();
+                    self.char_iter.next();
 
                     // Grab the character
-                    let (_, chr) = self.iter.next()
-                        .context("Missing terminating \' character.")?;
+                    let (_, chr) = self.char_iter.next()
+                        .ok_or_else(|| self.into_err(i, "missing terminating \' character"))?;
 
                     // Ensure we got something up next
-                    self.iter.peek()
-                        .context("Missing terminating \' character.")?;
-                    
-                    // Make sure that character is an end quote
-                    self.iter.next_if(|&(_,c)| c == '\'')
-                        .context("Multi-character character constant.")?;
+                    if self.char_iter.peek().is_none() {
+                        return Err(self.into_err(i, "missing terminating \' character"));
+                    }
+
+                    // Ensure that the char literal is one character in length
+                    if self.char_iter.next_if(|&(_,c)| c == '\'').is_none() {
+                        return Err(self.into_err(i, "multi-character character constant"))
+                    }
 
                     Token {
                         kind: TokenKind::CharLiteral,
@@ -211,14 +236,14 @@ impl<'a> Lexer<'a> {
 
                 // Skip whitespace
                 c if c.is_whitespace() => {
-                    while self.iter.peek().is_some_and(|(_,c)| c.is_whitespace()) {
-                        if let Some((_,'\n')) = self.iter.peek() {
+                    while self.char_iter.peek().is_some_and(|(_,c)| c.is_whitespace()) {
+                        if let Some((_,'\n')) = self.char_iter.peek() {
                             self.line_number += 1;
                             self.last_line_break = i;
                         }
-                        self.iter.next();
+                        self.char_iter.next();
                     }
-                    self.iter.by_ref()
+                    self.char_iter.by_ref()
                         .peeking_take_while(|(_,c)| c.is_whitespace())
                         .for_each(drop);
 
@@ -229,7 +254,7 @@ impl<'a> Lexer<'a> {
                 _ => {
                     let lexeme = c.to_string();
 
-                    self.iter.next();
+                    self.char_iter.next();
                     Token {
                         kind: TokenKind::Unknown,
                         lexeme,
@@ -246,12 +271,12 @@ impl<'a> Lexer<'a> {
     }
 
     fn match_one(&mut self, kind: TokenKind) -> Token {
-        let &(i, char) = self.iter
+        let &(i, char) = self.char_iter
             .peek()
             .expect("The iterator should point to a valid char when this method is called.");
         let lexeme = char.to_string();
 
-        self.iter.next();
+        self.char_iter.next();
 
         Token {
             kind,
@@ -267,21 +292,24 @@ impl<'a> Lexer<'a> {
     /// There are cases where we want to lex two-character sequences, but
     ///     need to look ahead one character to determine what we are looking at.
     ///
-    /// Example: !xxx <--- Unparsed characters
-    /// .        ^--- If we are here, we need to look ahead to see if we are at an
-    /// .             Inequality '!=', or just LogicalNot '!'.
-    /// .
+    /// # Example: 
+    /// ```md
+    /// !xxx <--- Unparsed characters
+    /// ^--- If we are here, we need to look ahead to see if we are at an
+    ///      Inequality '!=', or just LogicalNot '!'.
+    /// 
+    /// ```
     ///
     fn match_two_or_one(&mut self, matches: &[(char, TokenKind)], otherwise: TokenKind) -> Token {
-        let (i, first) = self.iter.peek()
+        let (i, first) = self.char_iter.peek()
             .cloned()
             .expect("The iterator should point to a valid char when this method is called.");
 
         // Consume the first character, move to the second
-        self.iter.next();
+        self.char_iter.next();
         for (second, kind) in matches {
-            if self.iter.peek().is_some_and(|&(_,c)| c == *second) {
-                self.iter.next();
+            if self.char_iter.peek().is_some_and(|&(_,c)| c == *second) {
+                self.char_iter.next();
                 return Token {
                     kind: kind.clone(),
                     lexeme: format!("{}{}",first,second),
@@ -299,8 +327,20 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Calculates the current column number based on the number 
+    /// of characters since the last line break.
     fn calc_col_num(&self, i: usize) -> usize {
         i - self.last_line_break + 1
+    }
+
+    /// Takes the current lexer state and produces a LexerError.
+    fn into_err(&self, idx: usize, msg: &str) -> LexerError {
+        LexerError {
+            message: msg.to_string(),
+            line_number: self.line_number,
+            col_number: self.calc_col_num(idx),
+        }
+
     }
 
 }

@@ -1,7 +1,9 @@
 use std::rc::Rc;
-use anyhow::{Result, Error, Context, anyhow};
 
 use crate::lexer::*;
+
+type ParserResult<T> = std::result::Result<T, ParserError>;
+
 
 #[derive (Debug, Clone)]
 pub enum ASTNode {
@@ -31,18 +33,26 @@ pub enum ASTNode {
         paren: Token,   // used for error generation
         args: Vec<Rc<ASTNode>>
     },
+    Program {
+        exprs: Vec<Rc<ASTNode>>
+    },
 }
 
 
 pub struct Parser {
     cursor: usize,
-    tokens: Vec<Token>
+    tokens: Vec<Token>,
+    
+    /// Index indicating the start of the current expression
+    start_expr: usize,
 }
 
 impl Parser {
-    /// Returns current position of the cursor.
-    fn cursor(&self) -> usize {
-        self.cursor
+    fn to_err<T: std::fmt::Display>(&self, msg: T) -> ParserError {
+        ParserError {
+            message: msg.to_string(),
+            token: self.tokens.get(self.start_expr).cloned(),
+        }
     }
 
     /// Returns true if we are done.
@@ -108,22 +118,26 @@ impl Parser {
 }
 
 impl Parser {
-    pub fn parse(input: &str) -> Result<ASTNode> {
+    pub fn parse(input: Vec<Token>) -> ParserResult<ASTNode> {
         Self {
             cursor: 0,
-            tokens: Lexer::lex(input)?
+            tokens: input,
+            start_expr: 0,
         }.program()
     }
 
-    fn program(&mut self) -> Result<ASTNode> {
+    fn program(&mut self) -> ParserResult<ASTNode> {
         // TODO: For now, a program is a single expression.
-        let program = self.call()?;
+        let mut exprs = Vec::new();
+        while self.peek().is_some() {
+            self.start_expr = self.cursor;
+            exprs.push(Rc::new(self.call()?));
+        }
 
-        if !self.end() { Err(anyhow!("Expected EOF, got kind: {:?}", self.peek_kind())) } 
-        else { Ok(program) }
+        Ok(ASTNode::Program{ exprs })
     }
 
-    fn call(&mut self) -> Result<ASTNode> {
+    fn call(&mut self) -> ParserResult<ASTNode> {
         let mut expr = self.primary()?;
         while self.eat_one(TokenKind::LParen).is_some() {
             let mut args = Vec::<Rc<ASTNode>>::new();
@@ -136,7 +150,7 @@ impl Parser {
 
             let callee = Rc::new(expr);
             let paren = self.eat_one(TokenKind::RParen).cloned()
-                .context("Expected ')' after argument list.")?;
+                .ok_or_else(|| self.to_err("unmatched '('"))?;
 
             expr = ASTNode::Call{ callee, paren, args };
         }
@@ -144,11 +158,11 @@ impl Parser {
         Ok(expr)
     }
 
-    fn expression(&mut self) -> Result<ASTNode> {
+    fn expression(&mut self) -> ParserResult<ASTNode> {
         self.equality()
     }
 
-    fn equality(&mut self) -> Result<ASTNode> {
+    fn equality(&mut self) -> ParserResult<ASTNode> {
         let mut expr = self.comparison()?;
         while let Some(op) = self.eat_any_of(&[TokenKind::BangEqual, 
                                             TokenKind::EqualEqual]) {
@@ -161,7 +175,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn comparison(&mut self) -> Result<ASTNode> {
+    fn comparison(&mut self) -> ParserResult<ASTNode> {
         let mut expr = self.term()?;
         while let Some(op) = self.eat_any_of(&[TokenKind::Greater, TokenKind::GreaterEqual, 
                                             TokenKind::Less, TokenKind::LessEqual]) {
@@ -174,7 +188,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn term(&mut self) -> Result<ASTNode> {
+    fn term(&mut self) -> ParserResult<ASTNode> {
         let mut expr = self.factor()?;
         while let Some(op) = self.eat_any_of(&[TokenKind::Minus, TokenKind::Plus]) {
             let op = op.clone();
@@ -186,7 +200,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn factor(&mut self) -> Result<ASTNode> {
+    fn factor(&mut self) -> ParserResult<ASTNode> {
         let mut expr = self.unary()?;
         while let Some(op) = self.eat_any_of(&[TokenKind::Slash, TokenKind::Star]) {
             let op = op.clone();
@@ -198,7 +212,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn unary(&mut self) -> Result<ASTNode, Error> {
+    fn unary(&mut self) -> ParserResult<ASTNode> {
         if let Some(op) = self.eat_any_of(&[TokenKind::Bang, TokenKind::Minus]) {
             let op = op.clone();
             let expr = Rc::new(self.unary()?);
@@ -207,13 +221,26 @@ impl Parser {
         else { Ok(self.primary()?) }
     }
 
-    fn primary(&mut self) -> Result<ASTNode, Error> {
-        let token = self.peek().context("Expected PRIMARY token").cloned()?;
+    fn primary(&mut self) -> ParserResult<ASTNode> {
+        let token = self.peek()
+            .ok_or_else(|| self.to_err("expected PRIMARY token"))?
+            .clone();
+
         let node = match token.kind {
             TokenKind::True              => ASTNode::BoolLiteral    {val: true,                  token},
             TokenKind::False             => ASTNode::BoolLiteral    {val: false,                 token},
-            TokenKind::IntegerLiteral    => ASTNode::IntegerLiteral {val: token.lexeme.parse()?, token},
-            TokenKind::FloatLiteral      => ASTNode::FloatLiteral   {val: token.lexeme.parse()?, token},
+            TokenKind::IntegerLiteral    =>  {
+                ASTNode::IntegerLiteral {
+                    val: token.lexeme.parse().map_err(|err| self.to_err(err))?, 
+                    token
+                }
+            },
+            TokenKind::FloatLiteral      => {
+                ASTNode::FloatLiteral {
+                    val: token.lexeme.parse().map_err(|err| self.to_err(err))?, 
+                    token
+                }
+            },
             TokenKind::StringLiteral     => ASTNode::StringLiteral  {val: token.lexeme.clone(),  token},
 
             TokenKind::Identifier        => ASTNode::Identifier     {name: token.lexeme.clone(), token},
@@ -222,14 +249,14 @@ impl Parser {
             TokenKind::LParen            => {
                 let left = self.peek()
                                .cloned()
-                               .context("Internal error.")?;  // when would this even happen
+                               .expect("Internal error.");  // when would this even happen
 
                 self.advance();
 
                 let expr = Rc::new(self.expression()?);
 
                 let right = self.eat_one(TokenKind::RParen).cloned()
-                    .context("Expected ')' after expression.")?;
+                    .ok_or_else(|| self.to_err("unmatched '('"))?;
 
                 // We are already on the next token, early return
                 return Ok(ASTNode::Grouping { expr, left, right })
@@ -237,7 +264,7 @@ impl Parser {
 
             // Unimplemented
             _ => {
-                return Err(anyhow!("Unimplemented TokenKind: {:?}", token.kind));
+                return Err(self.to_err(format!("unimplemented tokenkind: {:?}", token.kind)));
             }
         };
 
@@ -247,4 +274,20 @@ impl Parser {
     }
 }
 
+#[derive(Debug)]
+pub struct ParserError {
+    message: String,
+    token: Option<Token>,
+}
 
+impl std::fmt::Display for ParserError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let msg = self.token
+            .as_ref()
+            .map_or_else(
+                ||      self.message.to_string(),
+                |token| format!("{}:{}:{}", self.message, token.line_number, token.col_number));
+
+        write!(f, "{msg}")
+    }
+}
