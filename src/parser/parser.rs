@@ -52,9 +52,6 @@ impl Parser {
     /// Advances cursor. Returns new token.
     fn advance(&mut self) -> Option<&Token> {
         // Advance the cursor if we're not at the end
-        if let Some(tok) = self.peek() {
-            println!("advancing parser from {:?}:{}:{}", tok.lexeme, tok.line_number, tok.col_number);
-        }
         self.cursor += 1;
         self.peek()
     }
