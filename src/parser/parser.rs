@@ -37,6 +37,43 @@ pub enum ASTNode {
     },
 }
 
+impl std::fmt::Display for ASTNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let display = match self {
+            ASTNode::IntegerLiteral { token, val } => token.lexeme.clone(),
+            ASTNode::FloatLiteral { token, val } => token.lexeme.clone(),
+            ASTNode::StringLiteral { token, val } => token.lexeme.clone(),
+            ASTNode::BoolLiteral { token, val } => token.lexeme.clone(),
+            ASTNode::Identifier { token, name } => token.lexeme.clone(),
+            ASTNode::UnaryExpr { op, expr } => format!("{}{}", op.lexeme, expr.as_ref()),
+            ASTNode::BinaryExpr { op, left, right } => format!("{} {} {}", left.as_ref(), op.lexeme, right.as_ref()),
+            ASTNode::Grouping { expr, left_delim, right_delim } => format!("{}{}{}", left_delim.lexeme, expr.as_ref(), right_delim.lexeme),
+            ASTNode::Call { callee, paren, args } => {
+                let args = args
+                    .iter()
+                    .map(|x| x.as_ref())
+                    .map(ASTNode::to_string)
+                    .collect::<Vec<String>>()
+                    .join(", ");
+
+                format!("{} ({args})", callee.as_ref())
+            },
+            ASTNode::Program { exprs } => {
+                let exprs = exprs
+                    .iter()
+                    .map(|x| x.as_ref())
+                    .map(ASTNode::to_string)
+                    .collect::<Vec<String>>()
+                    .join(";\n");
+
+                exprs
+            }
+        };
+
+        write!(f, "{display}")
+    }
+}
+
 
 pub struct Parser {
     cursor: usize,
@@ -179,7 +216,6 @@ impl Parser {
 
     fn term(&mut self) -> ParserResult<ASTNode> {
         let mut expr = self.factor()?;
-        println!("Just nommed {expr:?}, \n--> next token: {:?}", self.peek());
         while let Some(op) = self.eat_any_of(&[TokenKind::Minus, TokenKind::Plus]).cloned() {
             let left = Rc::new(expr.clone());
             let right = Rc::new(self.factor()?);
