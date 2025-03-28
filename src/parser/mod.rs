@@ -1,5 +1,5 @@
 mod parser;
-pub use parser::*;
+pub(crate) use parser::*;
 
 pub mod ast_printer;
 

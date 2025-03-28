@@ -100,11 +100,11 @@ fn create_printnode_tree(root: ASTNode) -> PrintNode {
         },
 
         UnaryExpr { op, expr } => PrintNode {
-            s: op.kind.to_string(),
+            s: op.token.kind.to_string(),
             c: vec![Box::new(create_printnode_tree(expr.as_ref().clone()))],
         },
         BinaryExpr { op, left, right } => PrintNode {
-            s: op.kind.to_string(),
+            s: op.token.kind.to_string(),
             c: vec![
                 Box::new(create_printnode_tree(left.as_ref().clone())),
                 Box::new(create_printnode_tree(right.as_ref().clone())),

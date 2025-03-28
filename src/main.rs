@@ -7,7 +7,10 @@ use std::{fs::File, io::Read, path::Path};
 fn main() -> Result<(), perry::CompilerError> {
     let args = std::env::args().collect::<Vec<_>>();
 
-    if args.contains(&"--repl".to_string()) { perry::parse_repl(); }
+    if args.contains(&"--repl".to_string()) { 
+        perry::run_repl(); 
+        return Ok(());
+    }
 
     let default = String::from("test.pr");
     let filename = args.get(1).unwrap_or(&default);
@@ -19,11 +22,13 @@ fn main() -> Result<(), perry::CompilerError> {
                 file.read_to_string(input).expect("Could not read file {}");
 
                 println!("=============");
-                print!("INPUT PROGRAM:\n{input}");
+                print!(  "INPUT PROGRAM:\n{input}");
                 println!("=============");
 
                 perry::print_lex_results(input)?;
                 perry::print_parse_results(input)?;
+
+                perry::compile(input);
             }
             Err(why) => {
                 print!("Could not open {}, {}", filename, why)

@@ -1,8 +1,30 @@
-use std::rc::Rc;
+use std::boxed::Box;
 
 use crate::lexer::*;
 
 type ParserResult<T> = std::result::Result<T, ParserError>;
+
+#[derive(Debug)]
+pub struct ParserError {
+    pub message: String,
+    pub token: Option<Token>,
+}
+
+impl std::fmt::Display for ParserError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let msg = self.token.as_ref().map_or_else(
+            || self.message.to_string(),
+            |token| {
+                format!(
+                    "{}:{}:{}",
+                    self.message, token.line_number, token.col_number
+                )
+            },
+        );
+
+        write!(f, "{msg}")
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum ASTNode {
@@ -23,32 +45,31 @@ pub enum ASTNode {
         token: Token,
         val: bool,
     },
-
     Identifier {
         token: Token,
         name: String,
     },
     UnaryExpr {
-        op: Token,
-        expr: Rc<ASTNode>,
+        op: UnaryOp,
+        expr: Box<ASTNode>,
     },
     BinaryExpr {
-        op: Token,
-        left: Rc<ASTNode>,
-        right: Rc<ASTNode>,
+        op: BinaryOp,
+        left: Box<ASTNode>,
+        right: Box<ASTNode>,
     },
     Grouping {
-        expr: Rc<ASTNode>,
+        expr: Box<ASTNode>,
         left_delim: Token,
         right_delim: Token,
     },
     Call {
-        callee: Rc<ASTNode>,
+        callee: Box<ASTNode>,
         paren: Token, // used for error generation
-        args: Vec<Rc<ASTNode>>,
+        args: Vec<Box<ASTNode>>,
     },
     Program {
-        exprs: Vec<Rc<ASTNode>>,
+        exprs: Vec<Box<ASTNode>>,
     },
 }
 
@@ -60,9 +81,9 @@ impl std::fmt::Display for ASTNode {
             ASTNode::StringLiteral { token, val } => token.lexeme.clone(),
             ASTNode::BoolLiteral { token, val } => token.lexeme.clone(),
             ASTNode::Identifier { token, name } => token.lexeme.clone(),
-            ASTNode::UnaryExpr { op, expr } => format!("{}{}", op.lexeme, expr.as_ref()),
+            ASTNode::UnaryExpr { op, expr } => format!("{}{}", op.token.lexeme, expr.as_ref()),
             ASTNode::BinaryExpr { op, left, right } => {
-                format!("{} {} {}", left.as_ref(), op.lexeme, right.as_ref())
+                format!("{} {} {}", left.as_ref(), op.token.lexeme, right.as_ref())
             }
             ASTNode::Grouping {
                 expr,
@@ -185,7 +206,7 @@ impl Parser {
         // TODO: For now, a program is a single expression.
         let mut exprs = Vec::new();
         while self.peek().is_some() {
-            exprs.push(Rc::new(self.call()?));
+            exprs.push(Box::new(self.call()?));
         }
 
         Ok(ASTNode::Program { exprs })
@@ -195,15 +216,15 @@ impl Parser {
         let mut expr = self.primary()?;
         while let Some(lparen) = self.eat_one(TokenKind::LParen) {
             let lparen = lparen.clone();
-            let mut args = Vec::<Rc<ASTNode>>::new();
+            let mut args = Vec::<Box<ASTNode>>::new();
             while !self.next_is_kind(TokenKind::RParen) {
-                args.push(Rc::new(self.expression()?));
+                args.push(Box::new(self.expression()?));
                 if self.eat_one(TokenKind::Comma).is_none() {
                     break;
                 }
             }
 
-            let callee = Rc::new(expr);
+            let callee = Box::new(expr);
 
             match self.eat_one(TokenKind::RParen) {
                 Some(rparen) => {
@@ -227,9 +248,9 @@ impl Parser {
     fn equality(&mut self) -> ParserResult<ASTNode> {
         let mut expr = self.comparison()?;
         while let Some(op) = self.eat_any_of(&[TokenKind::BangEqual, TokenKind::EqualEqual]) {
-            let op = op.clone();
-            let left = Rc::new(expr.clone());
-            let right = Rc::new(self.comparison()?);
+            let op = op.clone().into();
+            let left = Box::new(expr.clone());
+            let right = Box::new(self.comparison()?);
             expr = ASTNode::BinaryExpr { op, left, right };
         }
 
@@ -244,9 +265,9 @@ impl Parser {
             TokenKind::Less,
             TokenKind::LessEqual,
         ]) {
-            let op = op.clone();
-            let left = Rc::new(expr.clone());
-            let right = Rc::new(self.term()?);
+            let op = op.clone().into();
+            let left = Box::new(expr.clone());
+            let right = Box::new(self.term()?);
             expr = ASTNode::BinaryExpr { op, left, right };
         }
 
@@ -257,10 +278,10 @@ impl Parser {
         let mut expr = self.factor()?;
         while let Some(op) = self
             .eat_any_of(&[TokenKind::Minus, TokenKind::Plus])
-            .cloned()
         {
-            let left = Rc::new(expr.clone());
-            let right = Rc::new(self.factor()?);
+            let op = op.clone().into();
+            let left = Box::new(expr.clone());
+            let right = Box::new(self.factor()?);
             expr = ASTNode::BinaryExpr { op, left, right };
         }
 
@@ -270,9 +291,9 @@ impl Parser {
     fn factor(&mut self) -> ParserResult<ASTNode> {
         let mut expr = self.unary()?;
         while let Some(op) = self.eat_any_of(&[TokenKind::Slash, TokenKind::Star]) {
-            let op = op.clone();
-            let left = Rc::new(expr.clone());
-            let right = Rc::new(self.unary()?);
+            let op = op.clone().into();
+            let left = Box::new(expr.clone());
+            let right = Box::new(self.unary()?);
             expr = ASTNode::BinaryExpr { op, left, right };
         }
 
@@ -281,8 +302,8 @@ impl Parser {
 
     fn unary(&mut self) -> ParserResult<ASTNode> {
         if let Some(op) = self.eat_any_of(&[TokenKind::Bang, TokenKind::Minus]) {
-            let op = op.clone();
-            let expr = Rc::new(self.unary()?);
+            let op = op.clone().into();
+            let expr = Box::new(self.unary()?);
             Ok(ASTNode::UnaryExpr { op, expr })
         } else {
             Ok(self.primary()?)
@@ -328,7 +349,7 @@ impl Parser {
             TokenKind::LParen => {
                 let left_delim = curr_token;
 
-                let expr = Rc::new(self.expression()?);
+                let expr = Box::new(self.expression()?);
 
                 match self.eat_one(TokenKind::RParen).cloned() {
                     Some(right_delim) => ASTNode::Grouping {
@@ -364,24 +385,53 @@ impl Parser {
     }
 }
 
-#[derive(Debug)]
-pub struct ParserError {
-    pub message: String,
-    pub token: Option<Token>,
+#[derive(Debug, Clone)]
+pub struct UnaryOp {
+    pub token: Token,
+    pub kind: UnaryOpKind,
+}
+#[derive(Debug, Clone)]
+pub enum UnaryOpKind {
+    Negate,
+    LogicalNot,
 }
 
-impl std::fmt::Display for ParserError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let msg = self.token.as_ref().map_or_else(
-            || self.message.to_string(),
-            |token| {
-                format!(
-                    "{}:{}:{}",
-                    self.message, token.line_number, token.col_number
-                )
-            },
-        );
+#[derive(Debug, Clone)]
+pub struct BinaryOp {
+    pub token: Token,
+    pub kind: BinaryOpKind,
+}
+#[derive(Debug, Clone)]
+pub enum BinaryOpKind {
+    Plus,
+    Minus,
+    Times,
+    Divide,
 
-        write!(f, "{msg}")
+    NotEqual,
+    Equal,
+}
+
+impl From<Token> for UnaryOp {
+    fn from(token: Token) -> Self {
+        use TokenKind::*;
+        match token.kind {
+            Minus => UnaryOp { kind: UnaryOpKind::Negate, token },
+            Bang => UnaryOp { kind: UnaryOpKind::LogicalNot, token },
+            _ => panic!("internal error: unexpected token for unary op: \n- {token}")
+        }
+    }
+}
+
+impl From<Token> for BinaryOp {
+    fn from(token: Token) -> Self {
+        use TokenKind::*;
+        match token.kind {
+            Plus => BinaryOp { kind: BinaryOpKind::Plus, token },
+            Minus => BinaryOp { kind: BinaryOpKind::Minus, token },
+            Star => BinaryOp { kind: BinaryOpKind::Times, token },
+            Slash => BinaryOp { kind: BinaryOpKind::Divide, token },
+            _ => panic!("internal error: unexpected token for binary op: \n- {token}")
+        }
     }
 }

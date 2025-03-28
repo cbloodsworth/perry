@@ -229,7 +229,7 @@ impl<'a> Lexer<'a> {
 
                     Token {
                         kind: TokenKind::StringLiteral,
-                        lexeme: format!("\"{}\"", word),
+                        lexeme: word,
                         line_number: self.line_number,
                         col_number: self.calc_col_num(i),
                     }
