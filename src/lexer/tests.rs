@@ -5,11 +5,11 @@ macro_rules! validate_tokens {
             .expect(&format!("Internal error: Could not lex the given program: {}.", $program))
             .into_iter();
         $(
-            let token = tokens.next().expect(&format!( 
+            let token = tokens.next().expect(&format!(
                     "Expected token with lexeme \"{}\", got end of file.", $expected_lexeme));
 
             // Check that the lexeme is what we expect
-            assert_eq!(token.lexeme, $expected_lexeme, 
+            assert_eq!(token.lexeme, $expected_lexeme,
                 "Token's actual lexeme differed from expected lexeme");
         )+
     };
@@ -26,7 +26,6 @@ mod lexer_tests {
         assert_eq!(first_token.lexeme, text);
         assert_eq!(first_token.kind, expected_tokenkind);
     }
-
 
     #[test]
     fn one_char_arithmetic() {
@@ -147,11 +146,18 @@ mod lexer_tests {
     #[test]
     fn line_numbers_1() {
         let vec = Lexer::lex(
-r#"int a = 1;
-float b = 3.14;"#)
+            r#"int a = 1;
+float b = 3.14;"#,
+        )
+        .unwrap();
+        let int_token = vec
+            .iter()
+            .find(|token| token.kind == TokenKind::TypeInt)
             .unwrap();
-        let int_token = vec.iter().find(|token| token.kind == TokenKind::TypeInt).unwrap();
-        let float_token = vec.iter().find(|token| token.kind == TokenKind::TypeFloat).unwrap();
+        let float_token = vec
+            .iter()
+            .find(|token| token.kind == TokenKind::TypeFloat)
+            .unwrap();
         let pi_token = vec.iter().find(|token| token.lexeme == "3.14").unwrap();
 
         assert_eq!(int_token.line_number, 1);

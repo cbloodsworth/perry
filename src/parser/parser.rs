@@ -4,23 +4,38 @@ use crate::lexer::*;
 
 type ParserResult<T> = std::result::Result<T, ParserError>;
 
-#[derive (Debug, Clone)]
+#[derive(Debug, Clone)]
 pub enum ASTNode {
     // Literals
-    IntegerLiteral { token: Token, val: i64, },
-    FloatLiteral   { token: Token, val: f64, },
-    StringLiteral  { token: Token, val: String, },
-    BoolLiteral    { token: Token, val: bool },
+    IntegerLiteral {
+        token: Token,
+        val: i64,
+    },
+    FloatLiteral {
+        token: Token,
+        val: f64,
+    },
+    StringLiteral {
+        token: Token,
+        val: String,
+    },
+    BoolLiteral {
+        token: Token,
+        val: bool,
+    },
 
-    Identifier     { token: Token, name: String, },
+    Identifier {
+        token: Token,
+        name: String,
+    },
     UnaryExpr {
         op: Token,
-        expr: Rc<ASTNode>
+        expr: Rc<ASTNode>,
     },
     BinaryExpr {
         op: Token,
         left: Rc<ASTNode>,
-        right: Rc<ASTNode>
+        right: Rc<ASTNode>,
     },
     Grouping {
         expr: Rc<ASTNode>,
@@ -29,11 +44,11 @@ pub enum ASTNode {
     },
     Call {
         callee: Rc<ASTNode>,
-        paren: Token,   // used for error generation
-        args: Vec<Rc<ASTNode>>
+        paren: Token, // used for error generation
+        args: Vec<Rc<ASTNode>>,
     },
     Program {
-        exprs: Vec<Rc<ASTNode>>
+        exprs: Vec<Rc<ASTNode>>,
     },
 }
 
@@ -46,9 +61,24 @@ impl std::fmt::Display for ASTNode {
             ASTNode::BoolLiteral { token, val } => token.lexeme.clone(),
             ASTNode::Identifier { token, name } => token.lexeme.clone(),
             ASTNode::UnaryExpr { op, expr } => format!("{}{}", op.lexeme, expr.as_ref()),
-            ASTNode::BinaryExpr { op, left, right } => format!("{} {} {}", left.as_ref(), op.lexeme, right.as_ref()),
-            ASTNode::Grouping { expr, left_delim, right_delim } => format!("{}{}{}", left_delim.lexeme, expr.as_ref(), right_delim.lexeme),
-            ASTNode::Call { callee, paren, args } => {
+            ASTNode::BinaryExpr { op, left, right } => {
+                format!("{} {} {}", left.as_ref(), op.lexeme, right.as_ref())
+            }
+            ASTNode::Grouping {
+                expr,
+                left_delim,
+                right_delim,
+            } => format!(
+                "{}{}{}",
+                left_delim.lexeme,
+                expr.as_ref(),
+                right_delim.lexeme
+            ),
+            ASTNode::Call {
+                callee,
+                paren,
+                args,
+            } => {
                 let args = args
                     .iter()
                     .map(|x| x.as_ref())
@@ -57,7 +87,7 @@ impl std::fmt::Display for ASTNode {
                     .join(", ");
 
                 format!("{} ({args})", callee.as_ref())
-            },
+            }
             ASTNode::Program { exprs } => {
                 let exprs = exprs
                     .iter()
@@ -74,7 +104,6 @@ impl std::fmt::Display for ASTNode {
     }
 }
 
-
 pub struct Parser {
     cursor: usize,
     tokens: Vec<Token>,
@@ -83,7 +112,7 @@ pub struct Parser {
 impl Parser {
     /// Returns true if we are done.
     fn end(&self) -> bool {
-        self.cursor >= self.tokens.len() - 1 
+        self.cursor >= self.tokens.len() - 1
     }
 
     /// Advances cursor. Returns new token.
@@ -104,10 +133,10 @@ impl Parser {
     }
 
     /// Returns true if the next token's kind is what we pass.
-    /// 
+    ///
     /// Does not advance the cursor.
     fn next_is_kind(&self, kind: TokenKind) -> bool {
-        return self.peek_kind() == Some(&kind)
+        return self.peek_kind() == Some(&kind);
     }
 
     /// Returns the token previous to the cursor.
@@ -115,29 +144,29 @@ impl Parser {
         self.tokens.get(self.cursor - 1)
     }
 
-    /// Returns the next token and advances the cursor if 
+    /// Returns the next token and advances the cursor if
     /// the next token is one of the ones we expect.
-    /// 
+    ///
     /// Returns None otherwise, and leaves the cursor unchanged.
     fn eat_any_of(&mut self, targets: &[TokenKind]) -> Option<&Token> {
         for target in targets {
             if self.peek_kind() == Some(target) {
                 self.advance();
-                return self.previous() 
+                return self.previous();
             }
-        };
+        }
 
         None
     }
 
-    /// Returns the next token and advances the cursor if 
+    /// Returns the next token and advances the cursor if
     /// the next token is the one we expect.
-    /// 
+    ///
     /// Returns None otherwise, and leaves the cursor unchanged.
     fn eat_one(&mut self, target: TokenKind) -> Option<&Token> {
         if self.peek_kind() == Some(&target) {
             self.advance();
-            return self.previous() 
+            return self.previous();
         }
         None
     }
@@ -148,7 +177,8 @@ impl Parser {
         Self {
             cursor: 0,
             tokens: input,
-        }.program()
+        }
+        .program()
     }
 
     fn program(&mut self) -> ParserResult<ASTNode> {
@@ -158,7 +188,7 @@ impl Parser {
             exprs.push(Rc::new(self.call()?));
         }
 
-        Ok(ASTNode::Program{ exprs })
+        Ok(ASTNode::Program { exprs })
     }
 
     fn call(&mut self) -> ParserResult<ASTNode> {
@@ -176,8 +206,14 @@ impl Parser {
             let callee = Rc::new(expr);
 
             match self.eat_one(TokenKind::RParen) {
-                Some(rparen) => expr = ASTNode::Call{ callee, paren: rparen.clone(), args },
-                None => return Err(self.to_err_with_token("unmatched '('", lparen))
+                Some(rparen) => {
+                    expr = ASTNode::Call {
+                        callee,
+                        paren: rparen.clone(),
+                        args,
+                    }
+                }
+                None => return Err(self.to_err_with_token("unmatched '('", lparen)),
             }
         }
 
@@ -190,8 +226,7 @@ impl Parser {
 
     fn equality(&mut self) -> ParserResult<ASTNode> {
         let mut expr = self.comparison()?;
-        while let Some(op) = self.eat_any_of(&[TokenKind::BangEqual, 
-                                            TokenKind::EqualEqual]) {
+        while let Some(op) = self.eat_any_of(&[TokenKind::BangEqual, TokenKind::EqualEqual]) {
             let op = op.clone();
             let left = Rc::new(expr.clone());
             let right = Rc::new(self.comparison()?);
@@ -203,8 +238,12 @@ impl Parser {
 
     fn comparison(&mut self) -> ParserResult<ASTNode> {
         let mut expr = self.term()?;
-        while let Some(op) = self.eat_any_of(&[TokenKind::Greater, TokenKind::GreaterEqual, 
-                                            TokenKind::Less, TokenKind::LessEqual]) {
+        while let Some(op) = self.eat_any_of(&[
+            TokenKind::Greater,
+            TokenKind::GreaterEqual,
+            TokenKind::Less,
+            TokenKind::LessEqual,
+        ]) {
             let op = op.clone();
             let left = Rc::new(expr.clone());
             let right = Rc::new(self.term()?);
@@ -216,7 +255,10 @@ impl Parser {
 
     fn term(&mut self) -> ParserResult<ASTNode> {
         let mut expr = self.factor()?;
-        while let Some(op) = self.eat_any_of(&[TokenKind::Minus, TokenKind::Plus]).cloned() {
+        while let Some(op) = self
+            .eat_any_of(&[TokenKind::Minus, TokenKind::Plus])
+            .cloned()
+        {
             let left = Rc::new(expr.clone());
             let right = Rc::new(self.factor()?);
             expr = ASTNode::BinaryExpr { op, left, right };
@@ -242,42 +284,44 @@ impl Parser {
             let op = op.clone();
             let expr = Rc::new(self.unary()?);
             Ok(ASTNode::UnaryExpr { op, expr })
+        } else {
+            Ok(self.primary()?)
         }
-        else { Ok(self.primary()?) }
     }
 
     fn primary(&mut self) -> ParserResult<ASTNode> {
-        let curr_token = self.peek()
+        let curr_token = self
+            .peek()
             .ok_or_else(|| self.to_err("expected PRIMARY token"))?
             .clone();
 
         self.advance();
 
         let node = match curr_token.kind {
-            TokenKind::True => {
-                ASTNode::BoolLiteral {val: true, token: curr_token}
+            TokenKind::True => ASTNode::BoolLiteral {
+                val: true,
+                token: curr_token,
             },
-            TokenKind::False => {
-                ASTNode::BoolLiteral {val: false, token: curr_token}
+            TokenKind::False => ASTNode::BoolLiteral {
+                val: false,
+                token: curr_token,
             },
-            TokenKind::IntegerLiteral => {
-                ASTNode::IntegerLiteral {
-                    val: curr_token.lexeme.parse().map_err(|err| self.to_err(err))?, 
-                    token: curr_token
-                }
+            TokenKind::IntegerLiteral => ASTNode::IntegerLiteral {
+                val: curr_token.lexeme.parse().map_err(|err| self.to_err(err))?,
+                token: curr_token,
             },
-            TokenKind::FloatLiteral => {
-                ASTNode::FloatLiteral {
-                    val: curr_token.lexeme.parse().map_err(|err| self.to_err(err))?, 
-                    token: curr_token
-                }
+            TokenKind::FloatLiteral => ASTNode::FloatLiteral {
+                val: curr_token.lexeme.parse().map_err(|err| self.to_err(err))?,
+                token: curr_token,
             },
-            TokenKind::StringLiteral => {
-                ASTNode::StringLiteral {val: curr_token.lexeme.clone(),  token: curr_token}
+            TokenKind::StringLiteral => ASTNode::StringLiteral {
+                val: curr_token.lexeme.clone(),
+                token: curr_token,
             },
 
-            TokenKind::Identifier => {
-                ASTNode::Identifier {name: curr_token.lexeme.clone(), token: curr_token}
+            TokenKind::Identifier => ASTNode::Identifier {
+                name: curr_token.lexeme.clone(),
+                token: curr_token,
             },
 
             // Parenthesized expressions, aka groupings
@@ -287,8 +331,12 @@ impl Parser {
                 let expr = Rc::new(self.expression()?);
 
                 match self.eat_one(TokenKind::RParen).cloned() {
-                    Some(right_delim) => ASTNode::Grouping { expr, left_delim, right_delim},
-                    None => Err(self.to_err_with_token("unmatched '('", left_delim))?
+                    Some(right_delim) => ASTNode::Grouping {
+                        expr,
+                        left_delim,
+                        right_delim,
+                    },
+                    None => Err(self.to_err_with_token("unmatched '('", left_delim))?,
                 }
             }
 
@@ -324,11 +372,15 @@ pub struct ParserError {
 
 impl std::fmt::Display for ParserError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let msg = self.token
-            .as_ref()
-            .map_or_else(
-                ||      self.message.to_string(),
-                |token| format!("{}:{}:{}", self.message, token.line_number, token.col_number));
+        let msg = self.token.as_ref().map_or_else(
+            || self.message.to_string(),
+            |token| {
+                format!(
+                    "{}:{}:{}",
+                    self.message, token.line_number, token.col_number
+                )
+            },
+        );
 
         write!(f, "{msg}")
     }

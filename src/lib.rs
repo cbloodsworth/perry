@@ -1,12 +1,12 @@
+mod interpreter;
 mod lexer;
 mod parser;
-mod interpreter;
 
 use std::io::{stdin, stdout, Read, Write};
 
+use interpreter::Interpreter;
 use lexer::Lexer;
 use parser::Parser;
-use interpreter::Interpreter;
 
 #[derive(Debug)]
 pub enum CompilerError {
@@ -20,19 +20,35 @@ impl std::fmt::Display for CompilerError {
         let err_msg = match self {
             CompilerError::LexerError(lexer_error) => format!("LEXER ERROR: {lexer_error}"),
             CompilerError::ParserError(parser_error) => format!("PARSER ERROR: {parser_error}"),
-            CompilerError::InterpreterError(interpreter_error) => format!("INTERPRETER ERROR: {interpreter_error}")
+            CompilerError::InterpreterError(interpreter_error) => {
+                format!("INTERPRETER ERROR: {interpreter_error}")
+            }
         };
 
         write!(f, "{err_msg}")
     }
 }
 
-impl From<lexer::LexerError> for CompilerError { fn from(err: lexer::LexerError) -> Self { Self::LexerError(err) }}
-impl From<parser::ParserError> for CompilerError { fn from(err: parser::ParserError) -> Self { Self::ParserError(err) }}
-impl From<interpreter::InterpreterError> for CompilerError { fn from(err: interpreter::InterpreterError) -> Self { Self::InterpreterError(err) }}
+impl From<lexer::LexerError> for CompilerError {
+    fn from(err: lexer::LexerError) -> Self {
+        Self::LexerError(err)
+    }
+}
+impl From<parser::ParserError> for CompilerError {
+    fn from(err: parser::ParserError) -> Self {
+        Self::ParserError(err)
+    }
+}
+impl From<interpreter::InterpreterError> for CompilerError {
+    fn from(err: interpreter::InterpreterError) -> Self {
+        Self::InterpreterError(err)
+    }
+}
 
 pub fn print_lex_results(input: &str) -> Result<(), CompilerError> {
-    Ok(Lexer::lex(input)?.iter().for_each(|token| println!("{token}")))
+    Ok(Lexer::lex(input)?
+        .iter()
+        .for_each(|token| println!("{token}")))
 }
 
 pub fn print_parse_results(input: &str) -> Result<(), CompilerError> {
@@ -68,7 +84,6 @@ pub fn parse_repl() {
             tcsetattr(0, TCSANOW, &term);
         }
     }
-
 
     enable_raw_mode();
     print!("perry> ");
