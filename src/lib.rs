@@ -37,7 +37,9 @@ pub fn print_lex_results(input: &str) -> Result<(), CompilerError> {
 
 pub fn print_parse_results(input: &str) -> Result<(), CompilerError> {
     let tokens = Lexer::lex(input)?;
-    Ok(println!("{}", Parser::parse(tokens)?))
+    let ast = Parser::parse(tokens)?;
+    crate::parser::ast_printer::pretty_print(&ast);
+    Ok(println!("{}", ast))
 }
 
 pub fn parse_repl() {

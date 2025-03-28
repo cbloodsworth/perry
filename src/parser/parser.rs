@@ -66,7 +66,7 @@ impl std::fmt::Display for ASTNode {
                     .collect::<Vec<String>>()
                     .join(";\n");
 
-                exprs
+                format!("{exprs};")
             }
         };
 

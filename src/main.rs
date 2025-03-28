@@ -19,7 +19,7 @@ fn main() -> Result<(), perry::CompilerError> {
                 file.read_to_string(input).expect("Could not read file {}");
 
                 println!("=============");
-                println!("INPUT PROGRAM:\n{input}");
+                print!("INPUT PROGRAM:\n{input}");
                 println!("=============");
 
                 perry::print_lex_results(input)?;
