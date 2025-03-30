@@ -17,7 +17,7 @@ pub fn compile(program: &str) -> Result<String, CompilerError> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct TokenLocation(usize, usize);
+pub struct TokenLocation(usize, usize);
 
 #[derive(Debug)]
 pub enum CompilerError {

@@ -160,16 +160,8 @@ impl Evaluator {
                     crate::parser::BinaryOpKind::Equal => eq(left_val, right_val)?,
                 }
             }
-            Grouping {
-                expr,
-                left_delim: left,
-                right_delim: right,
-            } => self.eval(*expr)?,
-            Call {
-                callee,
-                paren,
-                args,
-            } => self.eval_call()?,
+            Grouping { expr, .. } => self.eval(*expr)?,
+            Call { callee, paren, args, } => todo!(),
         };
 
         Ok(val)
@@ -177,18 +169,6 @@ impl Evaluator {
 
     fn lookup(&self, var: &str) -> Option<&Value> {
         self.environment.get(var)
-    }
-
-    fn eval_unary(&self) -> Result<Value> {
-        todo!()
-    }
-
-    fn eval_binary(&self) -> Result<Value> {
-        todo!()
-    }
-
-    fn eval_call(&self) -> Result<Value> {
-        todo!()
     }
 }
 

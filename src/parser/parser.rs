@@ -94,11 +94,11 @@ impl ASTNode {
 impl std::fmt::Display for ASTNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let display = match self {
-            ASTNode::IntegerLiteral { token, val } => token.lexeme.clone(),
-            ASTNode::FloatLiteral { token, val } => token.lexeme.clone(),
-            ASTNode::StringLiteral { token, val } => token.lexeme.clone(),
-            ASTNode::BoolLiteral { token, val } => token.lexeme.clone(),
-            ASTNode::Identifier { token, name } => token.lexeme.clone(),
+            ASTNode::IntegerLiteral { token, .. } => token.lexeme.clone(),
+            ASTNode::FloatLiteral { token, .. } => token.lexeme.clone(),
+            ASTNode::StringLiteral { token, .. } => token.lexeme.clone(),
+            ASTNode::BoolLiteral { token, .. } => token.lexeme.clone(),
+            ASTNode::Identifier { token, .. } => token.lexeme.clone(),
             ASTNode::UnaryExpr { op, expr } => format!("{}{}", op.token.lexeme, expr.as_ref()),
             ASTNode::BinaryExpr { op, left, right } => {
                 format!("{} {} {}", left.as_ref(), op.token.lexeme, right.as_ref())
@@ -115,7 +115,7 @@ impl std::fmt::Display for ASTNode {
             ),
             ASTNode::Call {
                 callee,
-                paren,
+                paren: _,
                 args,
             } => {
                 let args = args
@@ -149,11 +149,6 @@ pub struct Parser {
 }
 
 impl Parser {
-    /// Returns true if we are done.
-    fn end(&self) -> bool {
-        self.cursor >= self.tokens.len() - 1
-    }
-
     /// Advances cursor. Returns new token.
     fn advance(&mut self) -> Option<&Token> {
         // Advance the cursor if we're not at the end
