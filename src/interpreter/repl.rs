@@ -6,6 +6,7 @@ pub fn run_repl() {
     const EMOJI_HAPPY: &str = "(^▽^) ♪> ";
     const EMOJI_NEUTRAL: &str = "('ω') ?> ";
     const EMOJI_ANGRY: &str = "(‵□′) #> ";
+    const EMOJI_WAITING: &str = "('ω')... ";
     fn enable_raw_mode() {
         use libc::{tcgetattr, tcsetattr, termios, ECHO, ICANON, TCSANOW};
         let mut term = unsafe { std::mem::zeroed::<termios>() };
@@ -35,12 +36,13 @@ pub fn run_repl() {
     let repl_loop = || -> i32 {
         let mut prompt = EMOJI_NEUTRAL;
         let mut last_input = String::new();
-        let mut curr_input = String::new();
+        let mut input = String::new();
+        let mut next_input = String::new();
         let mut cursor_pos = 0;
         let mut debug = false;
-        'main: loop {
+        loop {
             let _ = stdout().flush();
-            let mut input = String::new();
+            let mut program = String::new();
 
             print!("{prompt}");
             stdout().flush().unwrap();
@@ -76,17 +78,30 @@ pub fn run_repl() {
                                     prompt = EMOJI_NEUTRAL;
                                 }
                             }
+                            line if line.ends_with('\\') => {
+                                input.pop();
+                                program += &format!(" {input}");
+                                input.clear();
+                                cursor_pos = 0;
+                                prompt = EMOJI_WAITING;
+                                print!("{prompt}");
+                                stdout().flush().unwrap();
+
+                                continue;
+                            }
                             _ => {
-                                match crate::compile(&format!("({input})")) {
+                                program += &format!(" {input}");
+                                match crate::compile(&format!("({program})")) {
                                     Ok(msg) => {
                                         if debug {
                                             println!(
                                                 "{}",
-                                                print_lex_results(&format!("({input})")).unwrap()
+                                                print_lex_results(&format!("({program})")).unwrap()
                                             );
                                             println!(
                                                 "{}",
-                                                print_parse_results(&format!("({input})")).unwrap()
+                                                print_parse_results(&format!("({program})"))
+                                                    .unwrap()
                                             );
                                         }
                                         println!("{msg}");
@@ -95,10 +110,10 @@ pub fn run_repl() {
                                     }
                                     Err(msg) => {
                                         if debug {
-                                            let _ = print_lex_results(&format!("({input})"))
+                                            let _ = print_lex_results(&format!("({program})"))
                                                 .inspect(|msg| println!("{msg}"))
                                                 .and_then(|_| {
-                                                    print_parse_results(&format!("({input})"))
+                                                    print_parse_results(&format!("({program})"))
                                                 })
                                                 .inspect(|msg| println!("{msg}"))
                                                 .inspect_err(|err| eprintln!("{err}"));
@@ -108,6 +123,7 @@ pub fn run_repl() {
                                         prompt = EMOJI_ANGRY;
                                     }
                                 };
+                                program.clear();
                             }
                         }
 
@@ -124,7 +140,7 @@ pub fn run_repl() {
                                 // up arrow
                                 [b'[', b'A'] => {
                                     if input != last_input {
-                                        curr_input = input.clone();
+                                        next_input = input.clone();
                                         input = last_input.clone();
                                     }
                                     cursor_pos = input.len();
@@ -133,7 +149,7 @@ pub fn run_repl() {
                                 }
                                 // down arrow
                                 [b'[', b'B'] => {
-                                    input = curr_input.clone();
+                                    input = next_input.clone();
                                     cursor_pos = input.len();
                                     print!("\r\x1b[2K{prompt}{}", input);
                                     stdout().flush().unwrap();
