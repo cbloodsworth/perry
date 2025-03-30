@@ -1,14 +1,15 @@
 use anyhow::anyhow;
 
+use crate::TokenLocation;
 use crate::{parser::{self, ASTNode}, print_lex_results, print_parse_results, Lexer, Parser};
 
 type Result<T> = std::result::Result<T, InterpreterError>;
 
 #[derive(Debug)]
 pub enum InterpreterError {
-    TypeMismatch(String),
-    NameCollision(String),
-    NameNotFound(String),
+    TypeMismatch(String, TokenLocation),
+    NameCollision(String, TokenLocation),
+    NameNotFound(String, TokenLocation),
     RuntimeError(String),
 }
 
@@ -16,10 +17,10 @@ impl std::fmt::Display for InterpreterError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // TODO/implement: Add additional attributes to the error display
         let msg = match self {
-            InterpreterError::TypeMismatch(s) => format!("type mismatch: {s}"),
-            InterpreterError::NameCollision(s) => format!("name collision: {s}"),
-            InterpreterError::NameNotFound(s) => format!("name not found: {s}"),
-            InterpreterError::RuntimeError(s) => format!("runtime error: {s}"),
+            InterpreterError::TypeMismatch(s, l) => format!("type mismatch: {s} ({}:{})", l.0, l.1),
+            InterpreterError::NameCollision(s, l) => format!("name collision: {s} ({}:{})", l.0, l.1),
+            InterpreterError::NameNotFound(s, l) => format!("name not found: {s} ({}:{})", l.0, l.1),
+            InterpreterError::RuntimeError(s) => s.to_owned(),
         };
 
         write!(f, "{msg}")
@@ -126,15 +127,14 @@ impl Evaluator {
                 let last = exprs.last().cloned().unwrap();
                 self.eval(*last)?
             }
-            IntegerLiteral { token, val } => Value::Integer(val),
-            FloatLiteral { token, val } => Value::Float(val),
-            StringLiteral { token, val } => Value::String(val),
-            BoolLiteral { token, val } => Value::Boolean(val),
-            Identifier { token, name } => self
+            IntegerLiteral { val, .. } => Value::Integer(val),
+            FloatLiteral { val, .. } => Value::Float(val),
+            StringLiteral { val, .. } => Value::String(val),
+            BoolLiteral { val, .. } => Value::Boolean(val),
+            Identifier { token, name, } => self
                 .lookup(&name)
-                .ok_or(InterpreterError::NameNotFound(format!(
-                    "couldn't find identifier {name} in this scope"
-                )))?
+                .ok_or(InterpreterError::NameNotFound(
+                    format!("couldn't find identifier {name} in this scope"), token.loc))?
                 .to_owned(),
             UnaryExpr { op, expr } => {
                 let val = self.eval(*expr)?;
@@ -145,11 +145,14 @@ impl Evaluator {
                 }
             }
             BinaryExpr { op, left, right } => {
+                let loc = left.get_loc();
                 let left_val = self.eval(*left)?;
                 let right_val = self.eval(*right)?;
 
                 match op.kind {
-                    crate::parser::BinaryOpKind::Plus => add(left_val, right_val)?,
+                    crate::parser::BinaryOpKind::Plus => 
+                        add(left_val, right_val)
+                            .map_err(|err| InterpreterError::TypeMismatch(err.to_string(), loc))?,
                     crate::parser::BinaryOpKind::Minus => sub(left_val, right_val)?,
                     crate::parser::BinaryOpKind::Times => mult(left_val, right_val)?,
                     crate::parser::BinaryOpKind::Divide => div(left_val, right_val)?,
@@ -203,7 +206,7 @@ fn add(lhs: Value, rhs: Value) -> Result<Value> {
         (String(l), String(r)) => String(l + &r),
 
         (lhs, rhs) => {
-            return Err(InterpreterError::TypeMismatch(format!(
+            return Err(InterpreterError::RuntimeError(format!(
                 "could not add types {} and {}",
                 lhs.name(),
                 rhs.name()
@@ -230,7 +233,7 @@ fn sub(lhs: Value, rhs: Value) -> Result<Value> {
         )),
 
         (lhs, rhs) => {
-            return Err(InterpreterError::TypeMismatch(format!(
+            return Err(InterpreterError::RuntimeError(format!(
                 "could not subtract types {} and {}",
                 lhs.name(),
                 rhs.name()
@@ -252,7 +255,7 @@ fn mult(lhs: Value, rhs: Value) -> Result<Value> {
         (Float(l), Integer(r)) => Float(l * (r as f64)),
 
         (lhs, rhs) => {
-            return Err(InterpreterError::TypeMismatch(format!(
+            return Err(InterpreterError::RuntimeError(format!(
                 "could not multiply types {} and {}",
                 lhs.name(),
                 rhs.name()
@@ -274,7 +277,7 @@ fn div(lhs: Value, rhs: Value) -> Result<Value> {
         (Float(l), Integer(r)) => Float(l / r as f64),
 
         (lhs, rhs) => {
-            return Err(InterpreterError::TypeMismatch(format!(
+            return Err(InterpreterError::RuntimeError(format!(
                 "could not divide types {} and {}",
                 lhs.name(),
                 rhs.name()
@@ -292,7 +295,7 @@ fn negate(val: Value) -> Result<Value> {
         Float(v) => Float(-v),
         String(v) => String(v.chars().rev().collect()),
         _ => {
-            return Err(InterpreterError::TypeMismatch(format!(
+            return Err(InterpreterError::RuntimeError(format!(
                 "could not negate type {}",
                 val.name()
             )));
@@ -305,9 +308,9 @@ fn negate(val: Value) -> Result<Value> {
 fn not(val: Value) -> Result<Value> {
     use Value::*;
     let logical_not = match val {
-        Value::Boolean(b) => Value::Boolean(!b),
+        Boolean(b) => Boolean(!b),
         _ => {
-            return Err(InterpreterError::TypeMismatch(format!(
+            return Err(InterpreterError::RuntimeError(format!(
                 "could not negate non-boolean type {}",
                 val.name()
             )));
@@ -326,7 +329,7 @@ fn ne(lhs: Value, rhs: Value) -> Result<Value> {
         (Boolean(l), Boolean(r)) => l != r,
 
         (lhs, rhs) => {
-            return Err(InterpreterError::TypeMismatch(format!(
+            return Err(InterpreterError::RuntimeError(format!(
                 "could not compare types {} and {}",
                 lhs.name(),
                 rhs.name()
@@ -346,7 +349,7 @@ fn eq(lhs: Value, rhs: Value) -> Result<Value> {
         (Boolean(l), Boolean(r)) => l == r,
 
         (lhs, rhs) => {
-            return Err(InterpreterError::TypeMismatch(format!(
+            return Err(InterpreterError::RuntimeError(format!(
                 "could not compare types {} and {}",
                 lhs.name(),
                 rhs.name()

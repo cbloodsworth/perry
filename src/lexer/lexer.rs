@@ -1,9 +1,10 @@
-use anyhow::Context;
 use itertools::Itertools;
 use std::{
     iter::{Enumerate, Peekable},
     str::Chars,
 };
+
+use crate::TokenLocation;
 
 pub struct Lexer<'a> {
     pub char_iter: Peekable<Enumerate<Chars<'a>>>,
@@ -15,8 +16,7 @@ pub struct Lexer<'a> {
 #[derive(Debug)]
 pub struct LexerError {
     message: String,
-    line_number: usize,
-    col_number: usize,
+    line_info: TokenLocation,
 }
 
 impl std::fmt::Display for LexerError {
@@ -24,7 +24,7 @@ impl std::fmt::Display for LexerError {
         write!(
             f,
             "{}:{}:{}",
-            self.message, self.line_number, self.col_number
+            self.message, self.line_info.0, self.line_info.1
         )
     }
 }
@@ -34,8 +34,7 @@ impl std::fmt::Display for Token {
         let Self {
             kind,
             lexeme,
-            line_number,
-            col_number,
+            loc: TokenLocation(line_number, col_number),
         } = self;
         let lexeme = format!("{line_number}:{col_number}: [{lexeme}]");
         write!(f, "{0:<10}:{kind:?}", lexeme)
@@ -153,8 +152,7 @@ impl<'a> Lexer<'a> {
                     Token {
                         kind,
                         lexeme,
-                        line_number: self.line_number,
-                        col_number: self.calc_col_num(i),
+                        loc: self.get_line_info(i),
                     }
                 }
 
@@ -182,8 +180,7 @@ impl<'a> Lexer<'a> {
                     Token {
                         kind,
                         lexeme,
-                        line_number: self.line_number,
-                        col_number: self.calc_col_num(i),
+                        loc: self.get_line_info(i),
                     }
                 }
 
@@ -219,21 +216,22 @@ impl<'a> Lexer<'a> {
                     Token {
                         kind: TokenKind::StringLiteral,
                         lexeme: word,
-                        line_number: self.line_number,
-                        col_number: self.calc_col_num(i),
+                        loc: self.get_line_info(i),
                     }
                 }
 
                 //---- Char literals
                 '\'' => {
-                    // Proceed past the first quote
                     self.char_iter.next();
 
-                    // Grab the character
+                    if self.char_iter.peek().is_none() {
+                        return Err(self.into_err(i, "missing terminating \' character"));
+                    }
+
                     let (_, chr) = self
                         .char_iter
                         .next()
-                        .ok_or_else(|| self.into_err(i, "missing terminating \' character"))?;
+                        .unwrap();
 
                     // Ensure we got something up next
                     if self.char_iter.peek().is_none() {
@@ -248,8 +246,7 @@ impl<'a> Lexer<'a> {
                     Token {
                         kind: TokenKind::CharLiteral,
                         lexeme: format!("'{}'", chr),
-                        line_number: self.line_number,
-                        col_number: self.calc_col_num(i),
+                        loc: self.get_line_info(i),
                     }
                 }
 
@@ -282,8 +279,7 @@ impl<'a> Lexer<'a> {
                     Token {
                         kind: TokenKind::Unknown,
                         lexeme,
-                        line_number: self.line_number,
-                        col_number: self.calc_col_num(i),
+                        loc: self.get_line_info(i),
                     }
                 }
             };
@@ -321,8 +317,7 @@ impl<'a> Lexer<'a> {
         Token {
             kind,
             lexeme,
-            line_number: self.line_number,
-            col_number: self.calc_col_num(i),
+            loc: self.get_line_info(i),
         }
     }
 
@@ -355,8 +350,7 @@ impl<'a> Lexer<'a> {
                 return Token {
                     kind: kind.clone(),
                     lexeme: format!("{}{}", first, second),
-                    line_number: self.line_number,
-                    col_number: self.calc_col_num(i),
+                    loc: self.get_line_info(i)
                 };
             }
         }
@@ -364,8 +358,7 @@ impl<'a> Lexer<'a> {
         Token {
             kind: otherwise,
             lexeme: first.to_string(),
-            line_number: self.line_number,
-            col_number: self.calc_col_num(i),
+            loc: self.get_line_info(i),
         }
     }
 
@@ -376,12 +369,15 @@ impl<'a> Lexer<'a> {
     }
 
     /// Takes the current lexer state and produces a LexerError.
-    fn into_err(&self, idx: usize, msg: &str) -> LexerError {
+    fn into_err(self, idx: usize, msg: &str) -> LexerError {
         LexerError {
             message: msg.to_string(),
-            line_number: self.line_number,
-            col_number: self.calc_col_num(idx),
+            line_info: TokenLocation(self.line_number, self.calc_col_num(idx)),
         }
+    }
+
+    fn get_line_info(&self, i: usize) -> TokenLocation {
+        TokenLocation(self.line_number, self.calc_col_num(i))
     }
 }
 
@@ -389,8 +385,7 @@ impl<'a> Lexer<'a> {
 pub struct Token {
     pub kind: TokenKind,
     pub lexeme: String,
-    pub line_number: usize,
-    pub col_number: usize,
+    pub loc: TokenLocation,
 }
 
 #[derive(Debug, Clone, PartialEq)]

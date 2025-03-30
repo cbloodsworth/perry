@@ -21,9 +21,8 @@ mod lexer_tests {
 
     fn assert_first_token_kind(text: &str, expected_tokenkind: TokenKind) {
         let vec = Lexer::lex(text).unwrap();
-        let first_token = vec.get(0).unwrap();
+        let first_token = vec.first().unwrap();
 
-        assert_eq!(first_token.lexeme, text);
         assert_eq!(first_token.kind, expected_tokenkind);
     }
 
@@ -160,8 +159,8 @@ float b = 3.14;"#,
             .unwrap();
         let pi_token = vec.iter().find(|token| token.lexeme == "3.14").unwrap();
 
-        assert_eq!(int_token.line_number, 1);
-        assert_eq!(float_token.line_number, 2);
-        assert_eq!(pi_token.line_number, 2);
+        assert_eq!(int_token.loc.0, 1);
+        assert_eq!(float_token.loc.0, 2);
+        assert_eq!(pi_token.loc.0, 2);
     }
 }

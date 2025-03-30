@@ -52,12 +52,13 @@ mod parser_tests {
             err.message
         );
 
+        let crate::TokenLocation(line_number, col_number) = lparen_token.loc;
         assert!(
-            lparen_token.line_number == 1 && lparen_token.col_number == 1,
+            line_number == 1 && col_number == 1,
             "Error message should report an unmatched parenthesis on line 1, column 1. \
             \nInstead, got line {}, column {}.",
-            lparen_token.line_number,
-            lparen_token.col_number
+            line_number,
+            col_number,
         );
     }
 
@@ -85,12 +86,13 @@ mod parser_tests {
             err.message
         );
 
+        let crate::TokenLocation(line_number, col_number) = lparen_token.loc;
         assert!(
-            lparen_token.line_number == 2 && lparen_token.col_number == 1,
+            line_number == 2 && col_number == 1,
             "Error message should report an unmatched parenthesis on line 2, column 1. \
             \nInstead, got line {}, column {}.",
-            lparen_token.line_number,
-            lparen_token.col_number
+            line_number,
+            col_number
         );
     }
 
@@ -118,12 +120,13 @@ fn (x
             err.message
         );
 
+        let crate::TokenLocation(line_number, col_number) = lparen_token.loc;
         assert!(
-            lparen_token.line_number == 2 && lparen_token.col_number == 4,
+            line_number == 2 && col_number == 4,
             "Error message should report an unmatched parenthesis on line 2, column 4. \
             \nInstead, got line {}, column {}.",
-            lparen_token.line_number,
-            lparen_token.col_number
+            line_number,
+            col_number
         );
     }
 }

@@ -1,6 +1,7 @@
 use std::boxed::Box;
 
 use crate::lexer::*;
+use crate::TokenLocation;
 
 type ParserResult<T> = std::result::Result<T, ParserError>;
 
@@ -17,7 +18,7 @@ impl std::fmt::Display for ParserError {
             |token| {
                 format!(
                     "{}:{}:{}",
-                    self.message, token.line_number, token.col_number
+                    self.message, token.loc.0, token.loc.1
                 )
             },
         );
@@ -71,6 +72,23 @@ pub enum ASTNode {
     Program {
         exprs: Vec<Box<ASTNode>>,
     },
+}
+
+impl ASTNode {
+    pub fn get_loc(&self) -> TokenLocation {
+        match self {
+            ASTNode::IntegerLiteral { token, .. } => token.loc,
+            ASTNode::FloatLiteral { token, .. } => token.loc,
+            ASTNode::StringLiteral { token, .. } => token.loc,
+            ASTNode::BoolLiteral { token, .. } => token.loc,
+            ASTNode::Identifier { token, .. } => token.loc,
+            ASTNode::UnaryExpr { op, .. } => op.token.loc,
+            ASTNode::BinaryExpr { left, .. } => left.get_loc(),
+            ASTNode::Grouping { left_delim, .. } => left_delim.loc,
+            ASTNode::Call { callee, .. } => callee.get_loc(),
+            ASTNode::Program { exprs } => exprs[0].get_loc(),
+        }
+    }
 }
 
 impl std::fmt::Display for ASTNode {

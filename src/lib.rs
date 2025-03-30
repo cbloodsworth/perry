@@ -7,6 +7,7 @@ use itertools::Itertools;
 use lexer::Lexer;
 use parser::Parser;
 
+
 pub fn repl() {
     Interpreter::run_repl();
 }
@@ -14,6 +15,9 @@ pub fn repl() {
 pub fn compile(program: &str) -> Result<String, CompilerError> {
     Ok(Interpreter::from_source(program)?.to_string())
 }
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct TokenLocation(usize, usize);
 
 #[derive(Debug)]
 pub enum CompilerError {
