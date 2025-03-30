@@ -276,9 +276,7 @@ impl Parser {
 
     fn term(&mut self) -> ParserResult<ASTNode> {
         let mut expr = self.factor()?;
-        while let Some(op) = self
-            .eat_any_of(&[TokenKind::Minus, TokenKind::Plus])
-        {
+        while let Some(op) = self.eat_any_of(&[TokenKind::Minus, TokenKind::Plus]) {
             let op = op.clone().into();
             let left = Box::new(expr.clone());
             let right = Box::new(self.factor()?);
@@ -416,9 +414,15 @@ impl From<Token> for UnaryOp {
     fn from(token: Token) -> Self {
         use TokenKind::*;
         match token.kind {
-            Minus => UnaryOp { kind: UnaryOpKind::Negate, token },
-            Bang => UnaryOp { kind: UnaryOpKind::LogicalNot, token },
-            _ => panic!("internal error: unexpected token for unary op: \n- {token}")
+            Minus => UnaryOp {
+                kind: UnaryOpKind::Negate,
+                token,
+            },
+            Bang => UnaryOp {
+                kind: UnaryOpKind::LogicalNot,
+                token,
+            },
+            _ => panic!("internal error: unexpected token for unary op: \n- {token}"),
         }
     }
 }
@@ -427,11 +431,23 @@ impl From<Token> for BinaryOp {
     fn from(token: Token) -> Self {
         use TokenKind::*;
         match token.kind {
-            Plus => BinaryOp { kind: BinaryOpKind::Plus, token },
-            Minus => BinaryOp { kind: BinaryOpKind::Minus, token },
-            Star => BinaryOp { kind: BinaryOpKind::Times, token },
-            Slash => BinaryOp { kind: BinaryOpKind::Divide, token },
-            _ => panic!("internal error: unexpected token for binary op: \n- {token}")
+            Plus => BinaryOp {
+                kind: BinaryOpKind::Plus,
+                token,
+            },
+            Minus => BinaryOp {
+                kind: BinaryOpKind::Minus,
+                token,
+            },
+            Star => BinaryOp {
+                kind: BinaryOpKind::Times,
+                token,
+            },
+            Slash => BinaryOp {
+                kind: BinaryOpKind::Divide,
+                token,
+            },
+            _ => panic!("internal error: unexpected token for binary op: \n- {token}"),
         }
     }
 }

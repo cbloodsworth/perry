@@ -1,6 +1,8 @@
 use std::{ops::Add, path::Display};
 
-use crate::{parser, Lexer, Parser, parser::ASTNode};
+use anyhow::anyhow;
+
+use crate::{parser, parser::ASTNode, Lexer, Parser};
 
 type Result<T> = std::result::Result<T, InterpreterError>;
 
@@ -29,11 +31,11 @@ impl std::fmt::Display for InterpreterError {
 pub trait Compile {
     type Output;
 
-    fn from_ast(ast: ASTNode) -> Self::Output;
+    fn from_ast(ast: ASTNode) -> anyhow::Result<Self::Output>;
 
-    fn from_source(source: &str) -> Self::Output {
-        let tokens = Lexer::lex(source).unwrap_or_else(|err| panic!("LEXER ERROR: {err}"));
-        let ast = Parser::parse(tokens).unwrap_or_else(|err| panic!("PARSER ERROR: {err}"));
+    fn from_source(source: &str) -> anyhow::Result<Self::Output> {
+        let tokens = Lexer::lex(source).map_err(|err| anyhow!("LEXER ERROR: {err}"))?;
+        let ast = Parser::parse(tokens).map_err(|err| anyhow!("PARSER ERROR: {err}"))?;
 
         Self::from_ast(ast)
     }
@@ -42,11 +44,11 @@ pub trait Compile {
 pub struct Interpreter;
 
 impl Compile for Interpreter {
-    type Output = Result<Value>;
+    type Output = Value;
 
-    fn from_ast(ast: ASTNode) -> Self::Output {
+    fn from_ast(ast: ASTNode) -> anyhow::Result<Self::Output> {
         let eval = Evaluator::new();
-        eval.eval(ast)
+        eval.eval(ast).map_err(|err| anyhow!(err))
     }
 }
 
@@ -65,7 +67,8 @@ impl Value {
             Value::Float(_) => "float",
             Value::String(_) => "string",
             Value::Boolean(_) => "boolean",
-        }.to_owned()
+        }
+        .to_owned()
     }
 }
 
@@ -92,12 +95,12 @@ impl Evaluator {
             FloatLiteral { token, val } => Value::Float(val),
             StringLiteral { token, val } => Value::String(val),
             BoolLiteral { token, val } => Value::Boolean(val),
-            Identifier { token, name } => {
-                self
-                    .lookup(&name)
-                    .ok_or(InterpreterError::NameNotFound(format!("couldn't find identifier {name} in this scope")))?
-                    .to_owned()
-            }
+            Identifier { token, name } => self
+                .lookup(&name)
+                .ok_or(InterpreterError::NameNotFound(format!(
+                    "couldn't find identifier {name} in this scope"
+                )))?
+                .to_owned(),
             UnaryExpr { op, expr } => {
                 let val = self.eval(*expr)?;
 
@@ -109,7 +112,7 @@ impl Evaluator {
             BinaryExpr { op, left, right } => {
                 let left_val = self.eval(*left)?;
                 let right_val = self.eval(*right)?;
-                
+
                 match op.kind {
                     crate::parser::BinaryOpKind::Plus => add(left_val, right_val)?,
                     crate::parser::BinaryOpKind::Minus => sub(left_val, right_val)?,
@@ -118,14 +121,12 @@ impl Evaluator {
                     crate::parser::BinaryOpKind::NotEqual => ne(left_val, right_val)?,
                     crate::parser::BinaryOpKind::Equal => eq(left_val, right_val)?,
                 }
-            },
+            }
             Grouping {
                 expr,
                 left_delim: left,
                 right_delim: right,
-            } => {
-                self.eval(*expr)?
-            }
+            } => self.eval(*expr)?,
             Call {
                 callee,
                 paren,
@@ -156,19 +157,22 @@ impl Evaluator {
 fn add(lhs: Value, rhs: Value) -> Result<Value> {
     use Value::*;
     let addition = match (lhs, rhs) {
-        (Integer(l), Integer(r)) => Integer(l+r),
-        (Float(l), Float(r)) => Float(l+r),
+        (Integer(l), Integer(r)) => Integer(l + r),
+        (Float(l), Float(r)) => Float(l + r),
 
         // integer + float
         (Integer(l), Float(r)) => Float(l as f64 + r),
         (Float(l), Integer(r)) => Float(l + r as f64),
 
         // String concatenation
-        (String(l), String(r)) => String(l+&r),
+        (String(l), String(r)) => String(l + &r),
 
         (lhs, rhs) => {
-            return Err(InterpreterError::TypeMismatch(
-                    format!("could not add types {} and {}", lhs.name(), rhs.name())));
+            return Err(InterpreterError::TypeMismatch(format!(
+                "could not add types {} and {}",
+                lhs.name(),
+                rhs.name()
+            )));
         }
     };
 
@@ -178,18 +182,24 @@ fn add(lhs: Value, rhs: Value) -> Result<Value> {
 fn sub(lhs: Value, rhs: Value) -> Result<Value> {
     use Value::*;
     let subtraction = match (lhs, rhs) {
-        (Integer(l), Integer(r)) => Integer(l-r),
-        (Float(l), Float(r)) => Float(l-r),
+        (Integer(l), Integer(r)) => Integer(l - r),
+        (Float(l), Float(r)) => Float(l - r),
 
         // integer + float
         (Integer(l), Float(r)) => Float(l as f64 - r),
         (Float(l), Integer(r)) => Float(l - r as f64),
 
-        (String(l), String(r)) => String(format!("{l}{}", r.clone().chars().rev().collect::<std::string::String>())),
+        (String(l), String(r)) => String(format!(
+            "{l}{}",
+            r.clone().chars().rev().collect::<std::string::String>()
+        )),
 
         (lhs, rhs) => {
-            return Err(InterpreterError::TypeMismatch(
-                    format!("could not subtract types {} and {}", lhs.name(), rhs.name())));
+            return Err(InterpreterError::TypeMismatch(format!(
+                "could not subtract types {} and {}",
+                lhs.name(),
+                rhs.name()
+            )));
         }
     };
 
@@ -199,16 +209,19 @@ fn sub(lhs: Value, rhs: Value) -> Result<Value> {
 fn mult(lhs: Value, rhs: Value) -> Result<Value> {
     use Value::*;
     let multiplication = match (lhs, rhs) {
-        (Integer(l), Integer(r)) => Integer(l*r),
-        (Float(l), Float(r)) => Float(l*r),
+        (Integer(l), Integer(r)) => Integer(l * r),
+        (Float(l), Float(r)) => Float(l * r),
 
         // integer + float
         (Integer(l), Float(r)) => Float((l as f64) * r),
         (Float(l), Integer(r)) => Float(l * (r as f64)),
 
         (lhs, rhs) => {
-            return Err(InterpreterError::TypeMismatch(
-                    format!("could not multiply types {} and {}", lhs.name(), rhs.name())));
+            return Err(InterpreterError::TypeMismatch(format!(
+                "could not multiply types {} and {}",
+                lhs.name(),
+                rhs.name()
+            )));
         }
     };
 
@@ -218,16 +231,19 @@ fn mult(lhs: Value, rhs: Value) -> Result<Value> {
 fn div(lhs: Value, rhs: Value) -> Result<Value> {
     use Value::*;
     let division = match (lhs, rhs) {
-        (Integer(l), Integer(r)) => Integer(l/r),
-        (Float(l), Float(r)) => Float(l/r),
+        (Integer(l), Integer(r)) => Integer(l / r),
+        (Float(l), Float(r)) => Float(l / r),
 
         // integer + float
         (Integer(l), Float(r)) => Float(l as f64 / r),
         (Float(l), Integer(r)) => Float(l / r as f64),
 
         (lhs, rhs) => {
-            return Err(InterpreterError::TypeMismatch(
-                    format!("could not divide types {} and {}", lhs.name(), rhs.name())));
+            return Err(InterpreterError::TypeMismatch(format!(
+                "could not divide types {} and {}",
+                lhs.name(),
+                rhs.name()
+            )));
         }
     };
 
@@ -241,8 +257,10 @@ fn negate(val: Value) -> Result<Value> {
         Float(v) => Float(-v),
         String(v) => String(v.chars().rev().collect()),
         _ => {
-            return Err(InterpreterError::TypeMismatch(
-                    format!("could not negate type {}", val.name())));
+            return Err(InterpreterError::TypeMismatch(format!(
+                "could not negate type {}",
+                val.name()
+            )));
         }
     };
 
@@ -254,8 +272,10 @@ fn not(val: Value) -> Result<Value> {
     let logical_not = match val {
         Value::Boolean(b) => Value::Boolean(!b),
         _ => {
-            return Err(InterpreterError::TypeMismatch(
-                format!("could not negate non-boolean type {}", val.name())));
+            return Err(InterpreterError::TypeMismatch(format!(
+                "could not negate non-boolean type {}",
+                val.name()
+            )));
         }
     };
 
@@ -271,8 +291,11 @@ fn ne(lhs: Value, rhs: Value) -> Result<Value> {
         (Boolean(l), Boolean(r)) => l != r,
 
         (lhs, rhs) => {
-            return Err(InterpreterError::TypeMismatch(
-                    format!("could not compare types {} and {}", lhs.name(), rhs.name())));
+            return Err(InterpreterError::TypeMismatch(format!(
+                "could not compare types {} and {}",
+                lhs.name(),
+                rhs.name()
+            )));
         }
     };
 
@@ -288,14 +311,16 @@ fn eq(lhs: Value, rhs: Value) -> Result<Value> {
         (Boolean(l), Boolean(r)) => l == r,
 
         (lhs, rhs) => {
-            return Err(InterpreterError::TypeMismatch(
-                    format!("could not compare types {} and {}", lhs.name(), rhs.name())));
+            return Err(InterpreterError::TypeMismatch(format!(
+                "could not compare types {} and {}",
+                lhs.name(),
+                rhs.name()
+            )));
         }
     };
 
     Ok(Value::Boolean(equality))
 }
-
 
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

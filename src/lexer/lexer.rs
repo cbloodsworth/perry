@@ -127,12 +127,7 @@ impl<'a> Lexer<'a> {
 
                 //---- Identifier
                 c if c.is_alphabetic() || c == '_' => {
-                    let lexeme = self
-                        .char_iter
-                        .by_ref()
-                        .peeking_take_while(|&(_, char)| char.is_alphanumeric() || char == '_')
-                        .map(|(_, c)| c) // only collect characters, not indeces
-                        .collect::<String>();
+                    let lexeme = self.take_while(|c| c.is_alphanumeric() || c == '_');
 
                     //---- Recognized keywords
                     let kind = match lexeme.as_str() {
@@ -177,14 +172,7 @@ impl<'a> Lexer<'a> {
                         lexeme.push('.');
                         self.char_iter.next();
 
-                        // Keep taking the numbers after the .
-                        lexeme.extend(
-                            self.char_iter
-                                .by_ref()
-                                .map(|(_, c)| c)
-                                .peekable()
-                                .peeking_take_while(|c| c.is_numeric()),
-                        );
+                        lexeme.push_str(&self.take_while(char::is_numeric));
 
                         TokenKind::FloatLiteral
                     } else {
@@ -218,6 +206,7 @@ impl<'a> Lexer<'a> {
 
                     // Keep going if that quote was escaped
                     while word.ends_with("\\") {
+                        word.pop();
                         word.push('"');
                         word.extend(
                             self.char_iter
@@ -303,6 +292,21 @@ impl<'a> Lexer<'a> {
         }
 
         Ok(self.tokens)
+    }
+
+    fn take_while<F: Fn(char) -> bool>(&mut self, pred: F) -> String {
+        // Keep taking the numbers after the .
+        let mut buffer = String::new();
+        while let Some(&(_, c)) = self.char_iter.peek() {
+            if pred(c) {
+                buffer.push(c)
+            } else {
+                break;
+            }
+            self.char_iter.next();
+        }
+
+        buffer
     }
 
     fn match_one(&mut self, kind: TokenKind) -> Token {
