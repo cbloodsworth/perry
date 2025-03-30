@@ -157,7 +157,7 @@ impl Parser {
     ///
     /// Does not advance the cursor.
     fn next_is_kind(&self, kind: TokenKind) -> bool {
-        return self.peek_kind() == Some(&kind);
+        self.peek_kind() == Some(&kind)
     }
 
     /// Returns the token previous to the cursor.
@@ -309,43 +309,43 @@ impl Parser {
     }
 
     fn primary(&mut self) -> ParserResult<ASTNode> {
-        let curr_token = self
+        let token = self
             .peek()
             .ok_or_else(|| self.to_err("expected PRIMARY token"))?
             .clone();
 
         self.advance();
 
-        let node = match curr_token.kind {
+        let node = match token.kind {
             TokenKind::True => ASTNode::BoolLiteral {
                 val: true,
-                token: curr_token,
+                token,
             },
             TokenKind::False => ASTNode::BoolLiteral {
                 val: false,
-                token: curr_token,
+                token,
             },
             TokenKind::IntegerLiteral => ASTNode::IntegerLiteral {
-                val: curr_token.lexeme.parse().map_err(|err| self.to_err(err))?,
-                token: curr_token,
+                val: token.lexeme.parse().map_err(|err| self.to_err(err))?,
+                token,
             },
             TokenKind::FloatLiteral => ASTNode::FloatLiteral {
-                val: curr_token.lexeme.parse().map_err(|err| self.to_err(err))?,
-                token: curr_token,
+                val: token.lexeme.parse().map_err(|err| self.to_err(err))?,
+                token,
             },
             TokenKind::StringLiteral => ASTNode::StringLiteral {
-                val: curr_token.lexeme.clone(),
-                token: curr_token,
+                val: token.lexeme.clone(),
+                token,
             },
 
             TokenKind::Identifier => ASTNode::Identifier {
-                name: curr_token.lexeme.clone(),
-                token: curr_token,
+                name: token.lexeme.clone(),
+                token,
             },
 
             // Parenthesized expressions, aka groupings
             TokenKind::LParen => {
-                let left_delim = curr_token;
+                let left_delim = token;
 
                 let expr = Box::new(self.expression()?);
 
@@ -361,7 +361,7 @@ impl Parser {
 
             // Unimplemented
             _ => {
-                return Err(self.to_err(format!("unimplemented tokenkind: {:?}", curr_token.kind)));
+                return Err(self.to_err(format!("unimplemented tokenkind: {:?}", token.kind)));
             }
         };
 
