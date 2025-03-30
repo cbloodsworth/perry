@@ -1,9 +1,8 @@
 mod interpreter;
 mod repl;
-pub use interpreter::*;
-pub use repl::run_repl;
 
-pub(crate) use interpreter::*;
+pub use interpreter::*;
+pub use repl::RunCommand;
 
 #[cfg(test)]
 mod tests;

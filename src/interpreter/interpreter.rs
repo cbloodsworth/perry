@@ -1,8 +1,6 @@
-use std::{ops::Add, path::Display};
-
 use anyhow::anyhow;
 
-use crate::{parser, parser::ASTNode, Lexer, Parser};
+use crate::{parser::{self, ASTNode}, print_lex_results, print_parse_results, Lexer, Parser};
 
 type Result<T> = std::result::Result<T, InterpreterError>;
 
@@ -28,6 +26,45 @@ impl std::fmt::Display for InterpreterError {
     }
 }
 
+pub struct Interpreter;
+
+impl super::repl::RunCommand for Interpreter {
+    fn run_cmd(cmd: &str) -> std::result::Result<String, String> {
+        let cmd = &format!("({cmd})");
+        crate::compile(cmd).map_err(|err| format!("{err}"))
+    }
+
+    fn run_cmd_debug(cmd: &str) -> std::result::Result<String, String> {
+        let cmd = &format!("({cmd})");
+        match crate::compile(cmd) {
+            Ok(val) => {
+                let mut info = String::new();
+
+                if let Ok(lex_dbg_info) = print_lex_results(cmd) { 
+                    info += &format!("\nLEXER INFO:\n{lex_dbg_info}\n"); 
+                }
+                if let Ok(parse_dbg_info) = print_parse_results(cmd) { 
+                    info += &format!("\nPARSER INFO:\n{parse_dbg_info}\n"); 
+                }
+
+                Ok(format!("{info}OUTPUT:\n{val}"))
+            }
+            Err(err) => {
+                let mut info = String::new();
+
+                if let Ok(lex_dbg_info) = print_lex_results(cmd) { 
+                    info += &format!("\nLEXER INFO:\n{lex_dbg_info}\n"); 
+                }
+                if let Ok(parse_dbg_info) = print_parse_results(cmd) { 
+                    info += &format!("\nPARSER INFO:\n{parse_dbg_info}\n"); 
+                }
+
+                Err(format!("{info}\n{err}"))
+            }
+        }
+    }
+}
+
 pub trait Compile {
     type Output;
 
@@ -40,8 +77,6 @@ pub trait Compile {
         Self::from_ast(ast)
     }
 }
-
-pub struct Interpreter;
 
 impl Compile for Interpreter {
     type Output = Value;
