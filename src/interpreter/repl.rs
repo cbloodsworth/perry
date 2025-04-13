@@ -7,7 +7,7 @@ pub trait RunCommand {
     const PROMPT_NEUTRAL: &str = "('ω') ?> ";
     const PROMPT_FAILURE: &str = "(‵□′) #> ";
     const PROMPT_WAITING: &str = "('ω')... ";
-    const PROMPT_RESTART: &str = "(x_x)~~~ ";
+    const PROMPT_RESTART: &str = "(x_x)~~✝ ";
     /// Given a command (program) as a `&str`, evaluate it and return its output as a String.
     /// 
     /// # Errors
