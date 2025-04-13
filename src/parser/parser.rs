@@ -59,6 +59,9 @@ pub enum ASTNode {
         left: Box<ASTNode>,
         right: Box<ASTNode>,
     },
+    CommaList {
+        tokens: Box<[ASTNode]>,
+    },
     Grouping {
         expr: Box<ASTNode>,
         left_delim: Token,
@@ -67,10 +70,10 @@ pub enum ASTNode {
     Call {
         callee: Box<ASTNode>,
         paren: Token, // used for error generation
-        args: Vec<Box<ASTNode>>,
+        args: Box<[ASTNode]>,
     },
     Program {
-        exprs: Vec<Box<ASTNode>>,
+        exprs: Box<[ASTNode]>,
     },
 }
 
@@ -87,6 +90,7 @@ impl ASTNode {
             ASTNode::Grouping { left_delim, .. } => left_delim.loc,
             ASTNode::Call { callee, .. } => callee.get_loc(),
             ASTNode::Program { exprs } => exprs[0].get_loc(),
+            ASTNode::CommaList { tokens } => tokens[0].get_loc(),
         }
     }
 }
@@ -102,6 +106,14 @@ impl std::fmt::Display for ASTNode {
             ASTNode::UnaryExpr { op, expr } => format!("{}{}", op.token.lexeme, expr.as_ref()),
             ASTNode::BinaryExpr { op, left, right } => {
                 format!("{} {} {}", left.as_ref(), op.token.lexeme, right.as_ref())
+            }
+            ASTNode::CommaList { tokens } => {
+                let vals = tokens
+                    .iter()
+                    .map(ASTNode::to_string)
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                format!("{vals}")
             }
             ASTNode::Grouping {
                 expr,
@@ -120,7 +132,6 @@ impl std::fmt::Display for ASTNode {
             } => {
                 let args = args
                     .iter()
-                    .map(|x| x.as_ref())
                     .map(ASTNode::to_string)
                     .collect::<Vec<String>>()
                     .join(", ");
@@ -130,7 +141,6 @@ impl std::fmt::Display for ASTNode {
             ASTNode::Program { exprs } => {
                 let exprs = exprs
                     .iter()
-                    .map(|x| x.as_ref())
                     .map(ASTNode::to_string)
                     .collect::<Vec<String>>()
                     .join(";\n");
@@ -219,19 +229,19 @@ impl Parser {
         // TODO: For now, a program is a single expression.
         let mut exprs = Vec::new();
         while self.peek().is_some() {
-            exprs.push(Box::new(self.call()?));
+            exprs.push(self.call()?);
         }
 
-        Ok(ASTNode::Program { exprs })
+        Ok(ASTNode::Program { exprs: exprs.into_boxed_slice() })
     }
 
     fn call(&mut self) -> ParserResult<ASTNode> {
         let mut expr = self.primary()?;
         while let Some(lparen) = self.eat_one(TokenKind::LParen) {
             let lparen = lparen.clone();
-            let mut args = Vec::<Box<ASTNode>>::new();
+            let mut args = Vec::new();
             while !self.next_is_kind(TokenKind::RParen) {
-                args.push(Box::new(self.expression()?));
+                args.push(self.expression()?);
                 if self.eat_one(TokenKind::Comma).is_none() {
                     break;
                 }
@@ -244,7 +254,7 @@ impl Parser {
                     expr = ASTNode::Call {
                         callee,
                         paren: rparen.clone(),
-                        args,
+                        args: args.into_boxed_slice(),
                     }
                 }
                 None => return Err(self.to_err_with_token("unmatched '('", lparen)),
@@ -256,6 +266,23 @@ impl Parser {
 
     fn expression(&mut self) -> ParserResult<ASTNode> {
         self.equality()
+    }
+
+    fn commas(&mut self) -> ParserResult<ASTNode> {
+        let expr = self.equality()?;
+
+        if let Some(_) = self.eat_any_of(&[TokenKind::Comma]) {
+            let mut exprs = vec![expr, self.equality()?];
+
+            while let Some(_) = self.eat_any_of(&[TokenKind::Comma]) {
+                exprs.push(self.equality()?)
+            }
+
+            Ok(ASTNode::CommaList { tokens: exprs.into_boxed_slice() })
+
+        } else {
+            Ok(expr)
+        }
     }
 
     fn equality(&mut self) -> ParserResult<ASTNode> {
@@ -359,6 +386,10 @@ impl Parser {
             // Parenthesized expressions, aka groupings
             TokenKind::LParen => {
                 let left_delim = token;
+
+                if let Some(right_delim) = self.eat_one(TokenKind::RParen) {
+
+                }
 
                 let expr = Box::new(self.expression()?);
 

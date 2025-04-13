@@ -13,6 +13,12 @@ pub enum InterpreterError {
     RuntimeError(String),
 }
 
+macro_rules! runtime_error {
+    ($($arg:tt)*) => {
+        Err(InterpreterError::RuntimeError(format!($($arg)*)))
+    };
+}
+
 impl std::fmt::Display for InterpreterError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // TODO/implement: Add additional attributes to the error display
@@ -122,44 +128,45 @@ impl Evaluator {
         use ASTNode::*;
         let val = match root {
             Program { exprs } => {
-                // TODO/implement: should we really just print the last expression..?
-                // TODO/implement: we shouldn't clone
-                let last = exprs.last().cloned().unwrap();
-                self.eval(*last)?
-            }
+                        // TODO/implement: should we really just print the last expression..?
+                        // We probably want to evaluate all previous expressions first.
+                        let last = exprs.into_vec().pop().unwrap();
+                        self.eval(last)?
+                    }
             IntegerLiteral { val, .. } => Value::Integer(val),
             FloatLiteral { val, .. } => Value::Float(val),
             StringLiteral { val, .. } => Value::String(val),
             BoolLiteral { val, .. } => Value::Boolean(val),
             Identifier { token, name, } => self
-                .lookup(&name)
-                .ok_or(InterpreterError::NameNotFound(
-                    format!("couldn't find identifier {name} in this scope"), token.loc))?
-                .to_owned(),
+                        .lookup(&name)
+                        .ok_or(InterpreterError::NameNotFound(
+                            format!("couldn't find identifier {name} in this scope"), token.loc))?
+                        .to_owned(),
             UnaryExpr { op, expr } => {
-                let val = self.eval(*expr)?;
+                        let val = self.eval(*expr)?;
 
-                match op.kind {
-                    parser::UnaryOpKind::Negate => negate(val)?,
-                    parser::UnaryOpKind::LogicalNot => not(val)?,
-                }
-            }
+                        match op.kind {
+                            parser::UnaryOpKind::Negate => negate(val)?,
+                            parser::UnaryOpKind::LogicalNot => not(val)?,
+                        }
+                    }
             BinaryExpr { op, left, right } => {
-                let loc = left.get_loc();
-                let left_val = self.eval(*left)?;
-                let right_val = self.eval(*right)?;
+                        let loc = left.get_loc();
+                        let left_val = self.eval(*left)?;
+                        let right_val = self.eval(*right)?;
 
-                match op.kind {
-                    crate::parser::BinaryOpKind::Plus => 
-                        add(left_val, right_val)
-                            .map_err(|err| InterpreterError::TypeMismatch(err.to_string(), loc))?,
-                    crate::parser::BinaryOpKind::Minus => sub(left_val, right_val)?,
-                    crate::parser::BinaryOpKind::Times => mult(left_val, right_val)?,
-                    crate::parser::BinaryOpKind::Divide => div(left_val, right_val)?,
-                    crate::parser::BinaryOpKind::NotEqual => ne(left_val, right_val)?,
-                    crate::parser::BinaryOpKind::Equal => eq(left_val, right_val)?,
-                }
-            }
+                        match op.kind {
+                            crate::parser::BinaryOpKind::Plus => 
+                                add(left_val, right_val)
+                                    .map_err(|err| InterpreterError::TypeMismatch(err.to_string(), loc))?,
+                            crate::parser::BinaryOpKind::Minus => sub(left_val, right_val)?,
+                            crate::parser::BinaryOpKind::Times => mult(left_val, right_val)?,
+                            crate::parser::BinaryOpKind::Divide => div(left_val, right_val)?,
+                            crate::parser::BinaryOpKind::NotEqual => ne(left_val, right_val)?,
+                            crate::parser::BinaryOpKind::Equal => eq(left_val, right_val)?,
+                        }
+                    }
+            CommaList { tokens } => todo!(),
             Grouping { expr, .. } => self.eval(*expr)?,
             Call { callee, paren, args, } => todo!(),
         };
@@ -247,6 +254,11 @@ fn mult(lhs: Value, rhs: Value) -> Result<Value> {
 }
 
 fn div(lhs: Value, rhs: Value) -> Result<Value> {
+    match rhs {
+        Integer(0) | Float(0.0) => return runtime_error!("division by zero"),
+        _ => {}
+    }
+
     use Value::*;
     let division = match (lhs, rhs) {
         (Integer(l), Integer(r)) => Integer(l / r),
@@ -257,11 +269,7 @@ fn div(lhs: Value, rhs: Value) -> Result<Value> {
         (Float(l), Integer(r)) => Float(l / r as f64),
 
         (lhs, rhs) => {
-            return Err(InterpreterError::RuntimeError(format!(
-                "could not divide types {} and {}",
-                lhs.name(),
-                rhs.name()
-            )));
+            return runtime_error!("could not divide types {} and {}", lhs.name(), rhs.name());
         }
     };
 
