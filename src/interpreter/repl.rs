@@ -1,10 +1,13 @@
 use std::io::{stdin, stdout, Read, Write};
 
+use libc::{signal, SIGINT, SIGTERM, tcgetattr, tcsetattr, termios, ECHO, ICANON, TCSANOW};
+
 pub trait RunCommand {
     const PROMPT_SUCCESS: &str = "(^▽^) ♪> ";
     const PROMPT_NEUTRAL: &str = "('ω') ?> ";
     const PROMPT_FAILURE: &str = "(‵□′) #> ";
     const PROMPT_WAITING: &str = "('ω')... ";
+    const PROMPT_RESTART: &str = "(x_x)~~~ ";
     /// Given a command (program) as a `&str`, evaluate it and return its output as a String.
     /// 
     /// # Errors
@@ -22,24 +25,6 @@ pub trait RunCommand {
     /// Starts a shell that can act as a repl for the implementer.
     /// 
     fn run_repl() {
-        fn enable_raw_mode() {
-            use libc::{tcgetattr, tcsetattr, termios, ECHO, ICANON, TCSANOW};
-            let mut term = unsafe { std::mem::zeroed::<termios>() };
-            unsafe {
-                tcgetattr(0, &mut term);
-                term.c_lflag &= !(ICANON | ECHO);
-                tcsetattr(0, TCSANOW, &term);
-            }
-        }
-        fn disable_raw_mode() {
-            use libc::{tcgetattr, tcsetattr, termios, ECHO, ICANON, TCSANOW};
-            let mut term = unsafe { std::mem::zeroed::<termios>() };
-            unsafe {
-                tcgetattr(0, &mut term);
-                term.c_lflag |= ICANON | ECHO;
-                tcsetattr(0, TCSANOW, &term);
-            }
-        }
 
         enable_raw_mode();
         let repl_loop = || -> i32 {
@@ -193,13 +178,44 @@ pub trait RunCommand {
             }
         };
 
+        unsafe {
+            signal(SIGINT,  handle_signal as usize);
+            signal(SIGTERM, handle_signal as usize);
+        }
+
         loop {
             let exit = std::panic::catch_unwind(repl_loop);
             if let Ok(0) = exit {
                 break;
+            } else {
+                eprintln!("\x1b[1;31m{}(panicked)\x1b[0;0m", Self::PROMPT_RESTART);
             }
         }
 
         disable_raw_mode();
+    }
+}
+
+extern "C" fn handle_signal(_signal: libc::c_int) {
+    disable_raw_mode();
+    println!();
+    std::process::exit(0);
+}
+
+fn enable_raw_mode() {
+    let mut term = unsafe { std::mem::zeroed::<termios>() };
+    unsafe {
+        tcgetattr(0, &mut term);
+        term.c_lflag &= !(ICANON | ECHO);
+        tcsetattr(0, TCSANOW, &term);
+    }
+}
+
+fn disable_raw_mode() {
+    let mut term = unsafe { std::mem::zeroed::<termios>() };
+    unsafe {
+        tcgetattr(0, &mut term);
+        term.c_lflag |= ICANON | ECHO;
+        tcsetattr(0, TCSANOW, &term);
     }
 }
