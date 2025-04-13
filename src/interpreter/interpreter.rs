@@ -1,7 +1,9 @@
 use anyhow::anyhow;
+use itertools::Itertools;
 
 use crate::TokenLocation;
 use crate::{parser::{self, ASTNode}, print_lex_results, print_parse_results, Lexer, Parser};
+
 
 type Result<T> = std::result::Result<T, InterpreterError>;
 
@@ -100,6 +102,9 @@ pub enum Value {
     Float(f64),
     String(String),
     Boolean(bool),
+
+    Array(Vec<Value>),
+    Tuple(Vec<Value>),
 }
 
 impl Value {
@@ -109,6 +114,8 @@ impl Value {
             Value::Float(_) => "float",
             Value::String(_) => "string",
             Value::Boolean(_) => "boolean",
+            Value::Array(_) => "array",
+            Value::Tuple(_) => "array",
         }
         .to_owned()
     }
@@ -125,50 +132,59 @@ impl Evaluator {
         }
     }
     fn eval(&self, root: ASTNode) -> Result<Value> {
-        use ASTNode::*;
+        use ASTNode as Node;
         let val = match root {
-            Program { exprs } => {
-                        // TODO/implement: should we really just print the last expression..?
-                        // We probably want to evaluate all previous expressions first.
-                        let last = exprs.into_vec().pop().unwrap();
-                        self.eval(last)?
-                    }
-            IntegerLiteral { val, .. } => Value::Integer(val),
-            FloatLiteral { val, .. } => Value::Float(val),
-            StringLiteral { val, .. } => Value::String(val),
-            BoolLiteral { val, .. } => Value::Boolean(val),
-            Identifier { token, name, } => self
-                        .lookup(&name)
-                        .ok_or(InterpreterError::NameNotFound(
-                            format!("couldn't find identifier {name} in this scope"), token.loc))?
-                        .to_owned(),
-            UnaryExpr { op, expr } => {
-                        let val = self.eval(*expr)?;
+            Node::Program { exprs } => {
+                                // TODO/implement: should we really just print the last expression..?
+                                // We probably want to evaluate all previous expressions first.
+                                let last = exprs.into_vec().pop().unwrap();
+                                self.eval(last)?
+                            }
+            Node::IntegerLiteral { val, .. } => Value::Integer(val),
+            Node::FloatLiteral { val, .. } => Value::Float(val),
+            Node::StringLiteral { val, .. } => Value::String(val),
+            Node::BoolLiteral { val, .. } => Value::Boolean(val),
+            Node::TupleLiteral { exprs, left_delim, right_delim } => {
+                let tuple = exprs
+                    .iter()
+                    .cloned()
+                    .map(|expr| self.eval(expr))
+                    .collect::<Result<Vec<_>>>()?;
 
-                        match op.kind {
-                            parser::UnaryOpKind::Negate => negate(val)?,
-                            parser::UnaryOpKind::LogicalNot => not(val)?,
-                        }
-                    }
-            BinaryExpr { op, left, right } => {
-                        let loc = left.get_loc();
-                        let left_val = self.eval(*left)?;
-                        let right_val = self.eval(*right)?;
+                Value::Tuple(tuple)
+            },
+            Node::ArrayLiteral { exprs, left_delim, right_delim } => todo!(),
+            Node::Identifier { token, name, } => self
+                                .lookup(&name)
+                                .ok_or(InterpreterError::NameNotFound(
+                                    format!("couldn't find identifier {name} in this scope"), token.loc))?
+                                .to_owned(),
+            Node::UnaryExpr { op, expr } => {
+                                let val = self.eval(*expr)?;
 
-                        match op.kind {
-                            crate::parser::BinaryOpKind::Plus => 
-                                add(left_val, right_val)
-                                    .map_err(|err| InterpreterError::TypeMismatch(err.to_string(), loc))?,
-                            crate::parser::BinaryOpKind::Minus => sub(left_val, right_val)?,
-                            crate::parser::BinaryOpKind::Times => mult(left_val, right_val)?,
-                            crate::parser::BinaryOpKind::Divide => div(left_val, right_val)?,
-                            crate::parser::BinaryOpKind::NotEqual => ne(left_val, right_val)?,
-                            crate::parser::BinaryOpKind::Equal => eq(left_val, right_val)?,
-                        }
-                    }
-            CommaList { tokens } => todo!(),
-            Grouping { expr, .. } => self.eval(*expr)?,
-            Call { callee, paren, args, } => todo!(),
+                                match op.kind {
+                                    parser::UnaryOpKind::Negate => negate(val)?,
+                                    parser::UnaryOpKind::LogicalNot => not(val)?,
+                                }
+                            }
+            Node::BinaryExpr { op, left, right } => {
+                                let loc = left.get_loc();
+                                let left_val = self.eval(*left)?;
+                                let right_val = self.eval(*right)?;
+
+                                match op.kind {
+                                    parser::BinaryOpKind::Plus => 
+                                        add(left_val, right_val)
+                                            .map_err(|err| InterpreterError::TypeMismatch(err.to_string(), loc))?,
+                                    parser::BinaryOpKind::Minus => sub(left_val, right_val)?,
+                                    parser::BinaryOpKind::Times => mult(left_val, right_val)?,
+                                    parser::BinaryOpKind::Divide => div(left_val, right_val)?,
+                                    parser::BinaryOpKind::NotEqual => ne(left_val, right_val)?,
+                                    parser::BinaryOpKind::Equal => eq(left_val, right_val)?,
+                                }
+                            }
+            Node::Grouping { expr, .. } => self.eval(*expr)?,
+            Node::Call { callee, paren, args, } => todo!(),
         };
 
         Ok(val)
@@ -355,6 +371,9 @@ impl std::fmt::Display for Value {
             Value::Float(f) => &format!("{f:?}"),
             Value::String(s) => s,
             Value::Boolean(b) => &format!("{b}"),
+
+            Value::Array(a) => &format!("[{}]", a.iter().map(Value::to_string).join(", ")),
+            Value::Tuple(t) => &format!("({})", t.iter().map(Value::to_string).join(", ")),
         };
 
         write!(f, "{s}")

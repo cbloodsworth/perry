@@ -46,6 +46,16 @@ pub enum ASTNode {
         token: Token,
         val: bool,
     },
+    TupleLiteral {
+        exprs: Box<[ASTNode]>,
+        left_delim: Token,
+        right_delim: Token,
+    },
+    ArrayLiteral {
+        exprs: Box<[ASTNode]>,
+        left_delim: Token,
+        right_delim: Token,
+    },
     Identifier {
         token: Token,
         name: String,
@@ -58,9 +68,6 @@ pub enum ASTNode {
         op: BinaryOp,
         left: Box<ASTNode>,
         right: Box<ASTNode>,
-    },
-    CommaList {
-        tokens: Box<[ASTNode]>,
     },
     Grouping {
         expr: Box<ASTNode>,
@@ -79,18 +86,20 @@ pub enum ASTNode {
 
 impl ASTNode {
     pub fn get_loc(&self) -> TokenLocation {
+        use ASTNode as Node;
         match self {
-            ASTNode::IntegerLiteral { token, .. } => token.loc,
-            ASTNode::FloatLiteral { token, .. } => token.loc,
-            ASTNode::StringLiteral { token, .. } => token.loc,
-            ASTNode::BoolLiteral { token, .. } => token.loc,
-            ASTNode::Identifier { token, .. } => token.loc,
-            ASTNode::UnaryExpr { op, .. } => op.token.loc,
-            ASTNode::BinaryExpr { left, .. } => left.get_loc(),
-            ASTNode::Grouping { left_delim, .. } => left_delim.loc,
-            ASTNode::Call { callee, .. } => callee.get_loc(),
-            ASTNode::Program { exprs } => exprs[0].get_loc(),
-            ASTNode::CommaList { tokens } => tokens[0].get_loc(),
+            Node::IntegerLiteral { token, .. } => token.loc,
+            Node::FloatLiteral { token, .. } => token.loc,
+            Node::StringLiteral { token, .. } => token.loc,
+            Node::BoolLiteral { token, .. } => token.loc,
+            Node::Identifier { token, .. } => token.loc,
+            Node::UnaryExpr { op, .. } => op.token.loc,
+            Node::BinaryExpr { left, .. } => left.get_loc(),
+            Node::Grouping { left_delim, .. } => left_delim.loc,
+            Node::Call { callee, .. } => callee.get_loc(),
+            Node::Program { exprs } => exprs[0].get_loc(),
+            Node::TupleLiteral { exprs, left_delim, right_delim } => todo!(),
+            Node::ArrayLiteral { exprs, left_delim, right_delim } => todo!(),
         }
     }
 }
@@ -102,51 +111,45 @@ impl std::fmt::Display for ASTNode {
             ASTNode::FloatLiteral { token, .. } => token.lexeme.clone(),
             ASTNode::StringLiteral { token, .. } => token.lexeme.clone(),
             ASTNode::BoolLiteral { token, .. } => token.lexeme.clone(),
+            ASTNode::TupleLiteral { exprs, left_delim, right_delim } => todo!(),
+            ASTNode::ArrayLiteral { exprs, left_delim, right_delim } => todo!(),
             ASTNode::Identifier { token, .. } => token.lexeme.clone(),
             ASTNode::UnaryExpr { op, expr } => format!("{}{}", op.token.lexeme, expr.as_ref()),
             ASTNode::BinaryExpr { op, left, right } => {
-                format!("{} {} {}", left.as_ref(), op.token.lexeme, right.as_ref())
-            }
-            ASTNode::CommaList { tokens } => {
-                let vals = tokens
-                    .iter()
-                    .map(ASTNode::to_string)
-                    .collect::<Vec<String>>()
-                    .join(", ");
-                format!("{vals}")
-            }
+                        format!("{} {} {}", left.as_ref(), op.token.lexeme, right.as_ref())
+                    }
             ASTNode::Grouping {
-                expr,
-                left_delim,
-                right_delim,
-            } => format!(
-                "{}{}{}",
-                left_delim.lexeme,
-                expr.as_ref(),
-                right_delim.lexeme
-            ),
+                        expr,
+                        left_delim,
+                        right_delim,
+                    } => format!(
+                        "{}{}{}",
+                        left_delim.lexeme,
+                        expr.as_ref(),
+                        right_delim.lexeme
+                    ),
             ASTNode::Call {
-                callee,
-                paren: _,
-                args,
-            } => {
-                let args = args
-                    .iter()
-                    .map(ASTNode::to_string)
-                    .collect::<Vec<String>>()
-                    .join(", ");
+                        callee,
+                        paren: _,
+                        args,
+                    } => {
+                        let args = args
+                            .iter()
+                            .map(ASTNode::to_string)
+                            .collect::<Vec<String>>()
+                            .join(", ");
 
-                format!("{} ({args})", callee.as_ref())
-            }
+                        format!("{} ({args})", callee.as_ref())
+                    }
             ASTNode::Program { exprs } => {
-                let exprs = exprs
-                    .iter()
-                    .map(ASTNode::to_string)
-                    .collect::<Vec<String>>()
-                    .join(";\n");
+                        let exprs = exprs
+                            .iter()
+                            .map(ASTNode::to_string)
+                            .collect::<Vec<String>>()
+                            .join(";\n");
 
-                format!("{exprs};")
-            }
+                        format!("{exprs};")
+                    }
         };
 
         write!(f, "{display}")
@@ -268,23 +271,6 @@ impl Parser {
         self.equality()
     }
 
-    fn commas(&mut self) -> ParserResult<ASTNode> {
-        let expr = self.equality()?;
-
-        if let Some(_) = self.eat_any_of(&[TokenKind::Comma]) {
-            let mut exprs = vec![expr, self.equality()?];
-
-            while let Some(_) = self.eat_any_of(&[TokenKind::Comma]) {
-                exprs.push(self.equality()?)
-            }
-
-            Ok(ASTNode::CommaList { tokens: exprs.into_boxed_slice() })
-
-        } else {
-            Ok(expr)
-        }
-    }
-
     fn equality(&mut self) -> ParserResult<ASTNode> {
         let mut expr = self.comparison()?;
         while let Some(op) = self.eat_any_of(&[TokenKind::BangEqual, TokenKind::EqualEqual]) {
@@ -387,15 +373,38 @@ impl Parser {
             TokenKind::LParen => {
                 let left_delim = token;
 
-                if let Some(right_delim) = self.eat_one(TokenKind::RParen) {
-
+                if let Some(right_delim) = self.eat_one(TokenKind::RParen).cloned() {
+                    return Ok(ASTNode::TupleLiteral {
+                        exprs: Box::new([]),
+                        left_delim,
+                        right_delim,
+                    });
                 }
 
-                let expr = Box::new(self.expression()?);
+                let mut expr = self.expression()?;
+
+                if let Some(_) = self.eat_any_of(&[TokenKind::Comma]) {
+                    let mut exprs = vec![expr, self.expression()?];
+
+                    while let Some(_) = self.eat_any_of(&[TokenKind::Comma]) {
+                        exprs.push(self.equality()?)
+                    }
+
+                    return match self.eat_one(TokenKind::RParen).cloned() {
+                        Some(right_delim) => {
+                            Ok(ASTNode::TupleLiteral {
+                                exprs: exprs.into_boxed_slice(),
+                                left_delim,
+                                right_delim,
+                            })
+                        },
+                        None => Err(self.to_err_with_token("unmatched '('", left_delim))?,
+                    }
+                }
 
                 match self.eat_one(TokenKind::RParen).cloned() {
                     Some(right_delim) => ASTNode::Grouping {
-                        expr,
+                        expr: Box::new(expr),
                         left_delim,
                         right_delim,
                     },
