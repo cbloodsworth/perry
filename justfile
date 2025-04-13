@@ -4,5 +4,8 @@ default:
 build:
   cargo build
 
+test:
+  cargo test
+
 repl:
   cargo run --release -- --repl
