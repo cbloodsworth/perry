@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use itertools::Itertools;
+use itertools::{Itertools, FoldWhile::{Continue, Done}};
 
 use crate::TokenLocation;
 use crate::{parser::{self, ASTNode}, print_lex_results, print_parse_results, Lexer, Parser};
@@ -153,7 +153,20 @@ impl Evaluator {
 
                 Value::Tuple(tuple)
             },
-            Node::ArrayLiteral { exprs, left_delim, right_delim } => todo!(),
+            Node::ArrayLiteral { exprs, left_delim, right_delim } => {
+                let array = exprs
+                    .iter()
+                    .cloned()
+                    .map(|expr| self.eval(expr))
+                    .collect::<Result<Vec<_>>>()?;
+
+
+                if array.iter().map(|val| std::mem::discriminant(val)).all_equal() {
+                    Value::Array(array)
+                } else {
+                    return Err(InterpreterError::TypeMismatch("incompatible types in array".into(), left_delim.loc));
+                }
+            },
             Node::Identifier { token, name, } => self
                                 .lookup(&name)
                                 .ok_or(InterpreterError::NameNotFound(

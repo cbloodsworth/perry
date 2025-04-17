@@ -388,7 +388,7 @@ pub struct Token {
     pub loc: TokenLocation,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum TokenKind {
     //---- Parentheses and Braces
     LParen,

@@ -217,6 +217,37 @@ impl Parser {
         }
         None
     }
+
+    /// Eats a list of commas and returns the boxed slice of nodes.
+    /// 
+    /// Keeps the cursor on the right delimiter token.
+    /// 
+    /// # Errors
+    /// If the commalist is invalid, returns a parser error.
+    fn eat_commalist(&mut self, r_delim: TokenKind) -> ParserResult<Box<[ASTNode]>> {
+        let left_delim_token = self.previous().unwrap().clone();
+
+        if self.eat_one(r_delim).is_some() {
+            return Ok(Box::new([]))
+        }
+
+        let mut exprs = vec![self.expression()?];
+        if self.eat_one(TokenKind::Comma).is_some() {
+            exprs.push(self.expression()?);
+
+            // Keep eating expression, comma, expression comma, etc..
+            while self.eat_one(TokenKind::Comma).is_some() {
+                exprs.push(self.expression()?)
+            }
+        } 
+
+        match self.eat_one(r_delim) {
+            Some(_) => {
+                Ok(exprs.into_boxed_slice())
+            },
+            None => Err(self.to_err_with_token("unmatched delimiter", left_delim_token)),
+        }
+    }
 }
 
 impl Parser {
@@ -369,46 +400,36 @@ impl Parser {
                 token,
             },
 
-            // Parenthesized expressions, aka groupings
+            // Array expressions
+            TokenKind::LSquare => {
+                ASTNode::ArrayLiteral {
+                    left_delim: token,
+                    exprs: self.eat_commalist(TokenKind::RSquare)?,
+                    right_delim: self.previous().unwrap().clone(),
+                }
+            }
+
+            // Parenthesized expressions, aka groupings, OR tuples
             TokenKind::LParen => {
                 let left_delim = token;
-
-                if let Some(right_delim) = self.eat_one(TokenKind::RParen).cloned() {
-                    return Ok(ASTNode::TupleLiteral {
+                let exprs = self.eat_commalist(TokenKind::RParen)?;
+                let right_delim = self.previous().unwrap().clone();
+                match exprs.iter().as_slice() {
+                    [] => ASTNode::TupleLiteral {
                         exprs: Box::new([]),
                         left_delim,
-                        right_delim,
-                    });
-                }
-
-                let mut expr = self.expression()?;
-
-                if let Some(_) = self.eat_any_of(&[TokenKind::Comma]) {
-                    let mut exprs = vec![expr, self.expression()?];
-
-                    while let Some(_) = self.eat_any_of(&[TokenKind::Comma]) {
-                        exprs.push(self.equality()?)
-                    }
-
-                    return match self.eat_one(TokenKind::RParen).cloned() {
-                        Some(right_delim) => {
-                            Ok(ASTNode::TupleLiteral {
-                                exprs: exprs.into_boxed_slice(),
-                                left_delim,
-                                right_delim,
-                            })
-                        },
-                        None => Err(self.to_err_with_token("unmatched '('", left_delim))?,
-                    }
-                }
-
-                match self.eat_one(TokenKind::RParen).cloned() {
-                    Some(right_delim) => ASTNode::Grouping {
-                        expr: Box::new(expr),
+                        right_delim
+                    },
+                    [_expr] => ASTNode::Grouping {
+                        expr: Box::new(exprs.to_vec().pop().unwrap()),
                         left_delim,
                         right_delim,
                     },
-                    None => Err(self.to_err_with_token("unmatched '('", left_delim))?,
+                    [..] => ASTNode::TupleLiteral {
+                        exprs,
+                        left_delim,
+                        right_delim,
+                    }
                 }
             }
 
