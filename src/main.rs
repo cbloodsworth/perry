@@ -7,13 +7,13 @@ use std::{fs::File, io::Read, path::Path};
 fn main() -> Result<(), perry::CompilerError> {
     let args = std::env::args().collect::<Vec<_>>();
 
-    if args.contains(&"--repl".to_string()) { 
+    if args.contains(&"--repl".to_string()) || args.len() == 1 { 
         perry::repl(); 
         return Ok(());
     }
 
     let default = String::from("test.pr");
-    let filename = args.get(1).unwrap_or(&default);
+    let filename = &args[1];
 
     let compile = || -> Result<(), perry::CompilerError> {
         match File::open(Path::new(filename)) {
