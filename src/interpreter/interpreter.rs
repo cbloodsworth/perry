@@ -115,7 +115,7 @@ impl Value {
             Value::String(_) => "string",
             Value::Boolean(_) => "boolean",
             Value::Array(_) => "array",
-            Value::Tuple(_) => "array",
+            Value::Tuple(_) => "tuple",
         }
         .to_owned()
     }
