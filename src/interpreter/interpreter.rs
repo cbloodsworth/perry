@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use itertools::{Itertools, FoldWhile::{Continue, Done}};
+use itertools::Itertools;
 
 use crate::TokenLocation;
 use crate::{parser::{self, ASTNode}, print_lex_results, print_parse_results, Lexer, Parser};
@@ -144,7 +144,7 @@ impl Evaluator {
             Node::FloatLiteral { val, .. } => Value::Float(val),
             Node::StringLiteral { val, .. } => Value::String(val),
             Node::BoolLiteral { val, .. } => Value::Boolean(val),
-            Node::TupleLiteral { exprs, left_delim, right_delim } => {
+            Node::TupleLiteral { exprs, .. } => {
                 let tuple = exprs
                     .iter()
                     .cloned()
@@ -153,7 +153,7 @@ impl Evaluator {
 
                 Value::Tuple(tuple)
             },
-            Node::ArrayLiteral { exprs, left_delim, right_delim } => {
+            Node::ArrayLiteral { exprs, left_delim, .. } => {
                 let array = exprs
                     .iter()
                     .cloned()
@@ -161,7 +161,7 @@ impl Evaluator {
                     .collect::<Result<Vec<_>>>()?;
 
 
-                if array.iter().map(|val| std::mem::discriminant(val)).all_equal() {
+                if array.iter().map(std::mem::discriminant).all_equal() {
                     Value::Array(array)
                 } else {
                     return Err(InterpreterError::TypeMismatch("incompatible types in array".into(), left_delim.loc));
@@ -222,11 +222,7 @@ fn add(lhs: Value, rhs: Value) -> Result<Value> {
         (String(l), String(r)) => String(l + &r),
 
         (lhs, rhs) => {
-            return Err(InterpreterError::RuntimeError(format!(
-                "could not add types {} and {}",
-                lhs.name(),
-                rhs.name()
-            )));
+            return runtime_error!("could not add types {} and {}", lhs.name(), rhs.name());
         }
     };
 
@@ -249,11 +245,7 @@ fn sub(lhs: Value, rhs: Value) -> Result<Value> {
         )),
 
         (lhs, rhs) => {
-            return Err(InterpreterError::RuntimeError(format!(
-                "could not subtract types {} and {}",
-                lhs.name(),
-                rhs.name()
-            )));
+            return runtime_error!( "could not subtract types {} and {}", lhs.name(), rhs.name());
         }
     };
 
@@ -271,11 +263,7 @@ fn mult(lhs: Value, rhs: Value) -> Result<Value> {
         (Float(l), Integer(r)) => Float(l * (r as f64)),
 
         (lhs, rhs) => {
-            return Err(InterpreterError::RuntimeError(format!(
-                "could not multiply types {} and {}",
-                lhs.name(),
-                rhs.name()
-            )));
+            return runtime_error!("could not multiply types {} and {}", lhs.name(), rhs.name());
         }
     };
 
@@ -312,10 +300,7 @@ fn negate(val: Value) -> Result<Value> {
         Float(v) => Float(-v),
         String(v) => String(v.chars().rev().collect()),
         _ => {
-            return Err(InterpreterError::RuntimeError(format!(
-                "could not negate type {}",
-                val.name()
-            )));
+            return runtime_error!("could not negate type {}", val.name());
         }
     };
 
@@ -326,12 +311,7 @@ fn not(val: Value) -> Result<Value> {
     use Value::*;
     let logical_not = match val {
         Boolean(b) => Boolean(!b),
-        _ => {
-            return Err(InterpreterError::RuntimeError(format!(
-                "could not negate non-boolean type {}",
-                val.name()
-            )));
-        }
+        _ => return runtime_error!("could not negate non-boolean type {}", val.name()),
     };
 
     Ok(logical_not)
@@ -346,11 +326,7 @@ fn ne(lhs: Value, rhs: Value) -> Result<Value> {
         (Boolean(l), Boolean(r)) => l != r,
 
         (lhs, rhs) => {
-            return Err(InterpreterError::RuntimeError(format!(
-                "could not compare types {} and {}",
-                lhs.name(),
-                rhs.name()
-            )));
+            return runtime_error!("could not compare types {} and {}", lhs.name(), rhs.name());
         }
     };
 
@@ -366,11 +342,7 @@ fn eq(lhs: Value, rhs: Value) -> Result<Value> {
         (Boolean(l), Boolean(r)) => l == r,
 
         (lhs, rhs) => {
-            return Err(InterpreterError::RuntimeError(format!(
-                "could not compare types {} and {}",
-                lhs.name(),
-                rhs.name()
-            )));
+            return runtime_error!("could not compare types {} and {}", lhs.name(), rhs.name());
         }
     };
 
