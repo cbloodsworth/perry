@@ -96,7 +96,7 @@ impl Compile for Interpreter {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Integer(i64),
     Float(f64),
@@ -324,6 +324,8 @@ fn ne(lhs: Value, rhs: Value) -> Result<Value> {
         (Float(l), Float(r)) => l != r,
         (String(l), String(r)) => l != r,
         (Boolean(l), Boolean(r)) => l != r,
+        (Array(l), Array(r)) => l != r,
+        (Tuple(l), Tuple(r)) => l != r,
 
         (lhs, rhs) => {
             return runtime_error!("could not compare types {} and {}", lhs.name(), rhs.name());
@@ -340,6 +342,8 @@ fn eq(lhs: Value, rhs: Value) -> Result<Value> {
         (Float(l), Float(r)) => l == r,
         (String(l), String(r)) => l == r,
         (Boolean(l), Boolean(r)) => l == r,
+        (Array(l), Array(r)) => l == r,
+        (Tuple(l), Tuple(r)) => l == r,
 
         (lhs, rhs) => {
             return runtime_error!("could not compare types {} and {}", lhs.name(), rhs.name());

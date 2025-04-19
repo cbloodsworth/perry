@@ -1,5 +1,7 @@
 use std::boxed::Box;
 
+use itertools::Itertools;
+
 use crate::lexer::*;
 use crate::TokenLocation;
 
@@ -98,8 +100,8 @@ impl ASTNode {
             Node::Grouping { left_delim, .. } => left_delim.loc,
             Node::Call { callee, .. } => callee.get_loc(),
             Node::Program { exprs } => exprs[0].get_loc(),
-            Node::TupleLiteral { exprs, left_delim, right_delim } => todo!(),
-            Node::ArrayLiteral { exprs, left_delim, right_delim } => todo!(),
+            Node::TupleLiteral { left_delim, .. } => left_delim.loc,
+            Node::ArrayLiteral { left_delim, .. } => left_delim.loc,
         }
     }
 }
@@ -111,8 +113,12 @@ impl std::fmt::Display for ASTNode {
             ASTNode::FloatLiteral { token, .. } => token.lexeme.clone(),
             ASTNode::StringLiteral { token, .. } => token.lexeme.clone(),
             ASTNode::BoolLiteral { token, .. } => token.lexeme.clone(),
-            ASTNode::TupleLiteral { exprs, left_delim, right_delim } => todo!(),
-            ASTNode::ArrayLiteral { exprs, left_delim, right_delim } => todo!(),
+            ASTNode::TupleLiteral { exprs, left_delim, right_delim } => {
+                format!("{left_delim}{}{right_delim}", exprs.iter().join(", "))
+            }
+            ASTNode::ArrayLiteral { exprs, left_delim, right_delim } => {
+                format!("{left_delim}{}{right_delim}", exprs.iter().join(", "))
+            }
             ASTNode::Identifier { token, .. } => token.lexeme.clone(),
             ASTNode::UnaryExpr { op, expr } => format!("{}{}", op.token.lexeme, expr.as_ref()),
             ASTNode::BinaryExpr { op, left, right } => {
@@ -519,6 +525,14 @@ impl From<Token> for BinaryOp {
             },
             Slash => BinaryOp {
                 kind: BinaryOpKind::Divide,
+                token,
+            },
+            EqualEqual => BinaryOp {
+                kind: BinaryOpKind::Equal,
+                token,
+            },
+            BangEqual => BinaryOp {
+                kind: BinaryOpKind::NotEqual,
                 token,
             },
             _ => panic!("internal error: unexpected token for binary op: \n- {token}"),
