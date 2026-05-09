@@ -1,0 +1,21 @@
+name: Notify pearterm of perry update
+
+on:
+  push:
+    branches: ['main']
+  workflow_dispatch:
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger pearterm rebuild
+        env:
+          GH_TOKEN: ${{ secrets.PEARTERM_DISPATCH_TOKEN }}
+        run: |
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            /repos/cbloodsworth/pearterm/dispatches \
+            -f event_type=perry-updated \
+            -f client_payload[sha]=${{ github.sha }}

@@ -1,8 +1,11 @@
 mod interpreter;
-mod repl;
-
 pub use interpreter::*;
-pub use repl::RunCommand;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub mod native {
+    pub mod repl;
+    pub use repl::RunCommand;
+}
 
 #[cfg(test)]
 mod tests;

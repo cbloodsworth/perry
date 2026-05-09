@@ -2,18 +2,37 @@ mod interpreter;
 mod lexer;
 mod parser;
 
-use interpreter::{Compile, Interpreter, RunCommand};
+use interpreter::{Compile, Interpreter};
 use itertools::Itertools;
 use lexer::Lexer;
 use parser::Parser;
 
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn repl() {
+    use interpreter::native::RunCommand;
     Interpreter::run_repl();
 }
 
 pub fn compile(program: &str) -> Result<String, CompilerError> {
     Ok(Interpreter::from_source(program)?.to_string())
+}
+
+// Wasm bindings: exposed to the browser via wasm-bindgen.
+#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
+mod wasm_api {
+    use wasm_bindgen::prelude::*;
+
+    #[wasm_bindgen]
+    pub fn perry_eval_expr(input: &str) -> Result<String, JsError> {
+        let wrapped = format!("({input})");
+        super::compile(&wrapped).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    #[wasm_bindgen]
+    pub fn perry_run_file(input: &str) -> Result<String, JsError> {
+        super::compile(input).map_err(|e| JsError::new(&e.to_string()))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

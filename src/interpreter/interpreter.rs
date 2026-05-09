@@ -37,7 +37,8 @@ impl std::fmt::Display for InterpreterError {
 
 pub struct Interpreter;
 
-impl super::repl::RunCommand for Interpreter {
+#[cfg(not(target_arch = "wasm32"))]
+impl super::native::repl::RunCommand for Interpreter {
     fn run_cmd(cmd: &str) -> std::result::Result<String, String> {
         let cmd = &format!("({cmd})");
         crate::compile(cmd).map_err(|err| format!("{err}"))
