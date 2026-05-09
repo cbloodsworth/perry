@@ -1,3 +1,4 @@
+#![warn(clippy::undocumented_unsafe_blocks)]
 use std::io::{stdin, stdout, Read, Write};
 
 use libc::{signal, SIGINT, SIGTERM, tcgetattr, tcsetattr, termios, ECHO, ICANON, TCSANOW};
@@ -25,7 +26,7 @@ pub trait RunCommand {
     /// Starts a shell that can act as a repl for the implementer.
     /// 
     fn run_repl() {
-
+        println!("Perry v0.1.0");
         enable_raw_mode();
         let repl_loop = || -> i32 {
             let mut prompt = Self::PROMPT_NEUTRAL;
@@ -203,6 +204,9 @@ extern "C" fn handle_signal(_signal: libc::c_int) {
 }
 
 fn enable_raw_mode() {
+    /* 
+        SAFETY: Safety comment
+    */
     let mut term = unsafe { std::mem::zeroed::<termios>() };
     unsafe {
         tcgetattr(0, &mut term);
